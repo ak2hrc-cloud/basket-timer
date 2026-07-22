@@ -22,7 +22,6 @@ function App() {
   const [isLocked, setIsLocked] = useState(false)
   const [unlockProgress, setUnlockProgress] = useState(0)
   
-  // ベンチモード（NEW）
   const [isBenchMode, setIsBenchMode] = useState(false)
   const [controlsVisible, setControlsVisible] = useState(true)
   
@@ -189,7 +188,7 @@ function App() {
         setTimeout(() => speak(
           '全試合終了です。お疲れさまでした',
           'All games complete. Good job!'
-        ), 800)
+        ), 900)
       } else {
         setCurrentPhaseIndex(nextIndex)
         setSecondsLeft(phases[nextIndex].durationSec)
@@ -204,7 +203,7 @@ function App() {
           } else {
             speak('休憩に入ります', 'Break time')
           }
-        }, 500)
+        }, 600)
       }
     }
   }, [secondsLeft, hasStarted, isAllDone, currentPhaseIndex, phases])
@@ -214,16 +213,16 @@ function App() {
       const prev = prevSecondsRef.current
       if (prev === secondsLeft + 1) {
         if (secondsLeft === 60) {
-          playWarningBeep(440)
-          setTimeout(() => speak('残り1分です', 'One minute remaining'), 350)
+          playWarningWhistle(2600)
+          setTimeout(() => speak('残り1分です', 'One minute remaining'), 300)
         }
         else if (secondsLeft === 30) {
-          playWarningBeep(660)
-          setTimeout(() => speak('残り30秒です', 'Thirty seconds remaining'), 350)
+          playWarningWhistle(2900)
+          setTimeout(() => speak('残り30秒です', 'Thirty seconds remaining'), 300)
         }
         else if (secondsLeft === 10) {
-          playWarningBeep(1000)
-          setTimeout(() => speak('残り10秒です', 'Ten seconds'), 350)
+          playWarningWhistle(3200)
+          setTimeout(() => speak('残り10秒です', 'Ten seconds'), 300)
         }
       }
     }
@@ -250,59 +249,86 @@ function App() {
     }
   }
   
+  // ============= 電子ホイッスル音の生成コア =============
+  // baseFreq: 中心となる周波数（高いほど鋭く緊迫感が増す）
+  // duration: 音の長さ（秒）
+  // peakVolume: 最大音量（0〜1）
+  const createWhistleTone = (startTime, duration, baseFreq = 2900, peakVolume = 0.9) => {
+    const ctx = audioContextRef.current
+    if (!ctx) return
+    
+    // メイン音（矢波：鋭さの核）
+    const osc1 = ctx.createOscillator()
+    osc1.type = 'square'
+    osc1.frequency.setValueAtTime(baseFreq, startTime)
+    
+    // わずかにずらした音（ホイッスル特有の「ピリピリ」うなりを再現）
+    const osc2 = ctx.createOscillator()
+    osc2.type = 'sine'
+    osc2.frequency.setValueAtTime(baseFreq * 1.017, startTime)
+    
+    // 下支えの音（太さ・体育館での通りやすさ）
+    const osc3 = ctx.createOscillator()
+    osc3.type = 'sine'
+    osc3.frequency.setValueAtTime(baseFreq * 0.5, startTime)
+    
+    const gain1 = ctx.createGain()
+    const gain2 = ctx.createGain()
+    const gain3 = ctx.createGain()
+    
+    osc1.connect(gain1); gain1.connect(ctx.destination)
+    osc2.connect(gain2); gain2.connect(ctx.destination)
+    osc3.connect(gain3); gain3.connect(ctx.destination)
+    
+    const attack = 0.006   // 立ち上がりを鋭く
+    const release = 0.04
+    const sustainEnd = Math.max(startTime + attack, startTime + duration - release)
+    
+    // メイン音
+    gain1.gain.setValueAtTime(0, startTime)
+    gain1.gain.linearRampToValueAtTime(peakVolume, startTime + attack)
+    gain1.gain.setValueAtTime(peakVolume, sustainEnd)
+    gain1.gain.linearRampToValueAtTime(0.0001, startTime + duration)
+    
+    // うなり音（少し控えめ）
+    gain2.gain.setValueAtTime(0, startTime)
+    gain2.gain.linearRampToValueAtTime(peakVolume * 0.55, startTime + attack)
+    gain2.gain.setValueAtTime(peakVolume * 0.55, sustainEnd)
+    gain2.gain.linearRampToValueAtTime(0.0001, startTime + duration)
+    
+    // 下支え音（さらに控えめ）
+    gain3.gain.setValueAtTime(0, startTime)
+    gain3.gain.linearRampToValueAtTime(peakVolume * 0.3, startTime + attack)
+    gain3.gain.setValueAtTime(peakVolume * 0.3, sustainEnd)
+    gain3.gain.linearRampToValueAtTime(0.0001, startTime + duration)
+    
+    osc1.start(startTime); osc1.stop(startTime + duration + 0.02)
+    osc2.start(startTime); osc2.stop(startTime + duration + 0.02)
+    osc3.start(startTime); osc3.stop(startTime + duration + 0.02)
+  }
+  
+  // フェーズ切替時：短いホイッスルを2回「ピッ、ピッ」
   const playTransitionAlarm = () => {
     if (!audioContextRef.current) return
     const ctx = audioContextRef.current
-    for (let i = 0; i < 2; i++) {
-      const oscillator = ctx.createOscillator()
-      const gainNode = ctx.createGain()
-      oscillator.connect(gainNode)
-      gainNode.connect(ctx.destination)
-      oscillator.frequency.value = 880
-      oscillator.type = 'sine'
-      const startTime = ctx.currentTime + i * 0.3
-      gainNode.gain.setValueAtTime(0, startTime)
-      gainNode.gain.linearRampToValueAtTime(0.5, startTime + 0.01)
-      gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + 0.2)
-      oscillator.start(startTime)
-      oscillator.stop(startTime + 0.2)
-    }
+    createWhistleTone(ctx.currentTime, 0.18, 2900, 0.95)
+    createWhistleTone(ctx.currentTime + 0.28, 0.18, 2900, 0.95)
   }
   
+  // 全試合終了時：長めのホイッスルを3回「ピーーッ、ピーーッ、ピーーッ」
   const playFinalAlarm = () => {
     if (!audioContextRef.current) return
     const ctx = audioContextRef.current
-    for (let i = 0; i < 5; i++) {
-      const oscillator = ctx.createOscillator()
-      const gainNode = ctx.createGain()
-      oscillator.connect(gainNode)
-      gainNode.connect(ctx.destination)
-      oscillator.frequency.value = 660
-      oscillator.type = 'sine'
-      const startTime = ctx.currentTime + i * 0.4
-      gainNode.gain.setValueAtTime(0, startTime)
-      gainNode.gain.linearRampToValueAtTime(0.6, startTime + 0.01)
-      gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + 0.3)
-      oscillator.start(startTime)
-      oscillator.stop(startTime + 0.3)
-    }
+    createWhistleTone(ctx.currentTime, 0.5, 2900, 1.0)
+    createWhistleTone(ctx.currentTime + 0.65, 0.5, 2900, 1.0)
+    createWhistleTone(ctx.currentTime + 1.3, 0.7, 2900, 1.0)
   }
   
-  const playWarningBeep = (frequency) => {
+  // 残り時間警告：単発の短いホイッスル（周波数で緊迫感を変える）
+  const playWarningWhistle = (baseFreq) => {
     if (!audioContextRef.current) return
     const ctx = audioContextRef.current
-    const oscillator = ctx.createOscillator()
-    const gainNode = ctx.createGain()
-    oscillator.connect(gainNode)
-    gainNode.connect(ctx.destination)
-    oscillator.frequency.value = frequency
-    oscillator.type = 'sine'
-    const startTime = ctx.currentTime
-    gainNode.gain.setValueAtTime(0, startTime)
-    gainNode.gain.linearRampToValueAtTime(0.4, startTime + 0.01)
-    gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + 0.3)
-    oscillator.start(startTime)
-    oscillator.stop(startTime + 0.3)
+    createWhistleTone(ctx.currentTime, 0.2, baseFreq, 0.95)
   }
   
   const minutes = Math.floor(secondsLeft / 60)
@@ -419,7 +445,6 @@ function App() {
     setUnlockProgress(0)
   }
   
-  // ベンチモード操作（NEW）
   const scheduleHideControls = () => {
     clearTimeout(benchTimerRef.current)
     benchTimerRef.current = setTimeout(() => {
@@ -487,7 +512,6 @@ function App() {
     return <div className={`timer ${timerWarnClass}`}>{formatted}</div>
   }
   
-  // ベンチモード中、操作が隠れている時のクラス
   const benchHideClass = isBenchMode && !controlsVisible ? 'bench-hidden' : ''
   
   return (
