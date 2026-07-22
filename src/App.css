@@ -1,0 +1,702 @@
+/* ============================================
+   テーマ変数定義
+============================================ */
+
+:root,
+.app.theme-dark {
+  --bg: #1a1a1a;
+  --text: #ffffff;
+  --text-muted: #aaaaaa;
+  --text-dim: #888888;
+  --surface: #2a2a2a;
+  --surface-2: #333333;
+  --border: #444444;
+  --primary: #4a90e2;
+  --primary-hover: #5aa0f2;
+  --positive: #5cb85c;
+  --positive-hover: #6dc66d;
+  --neutral: #555555;
+  --neutral-hover: #777777;
+  --warn-low: #ffd700;
+  --warn-mid: #ff8c00;
+  --warn-high: #ff4444;
+  --phase-game-bg: #1a1a1a;
+  --phase-rest-bg: #1a3a4a;
+  --phase-game-color: #4a90e2;
+  --phase-rest-color: #ffb84a;
+  --finished-color: #4ae2a0;
+  --scrollbar-thumb: rgba(255, 255, 255, 0.25);
+  --scrollbar-track: rgba(255, 255, 255, 0.05);
+}
+
+.app.theme-light {
+  --bg: #f5f5f5;
+  --text: #1a1a1a;
+  --text-muted: #555555;
+  --text-dim: #777777;
+  --surface: #ffffff;
+  --surface-2: #e0e0e0;
+  --border: #cccccc;
+  --primary: #2c6db8;
+  --primary-hover: #1c5da8;
+  --positive: #2e9e2e;
+  --positive-hover: #1e8e1e;
+  --neutral: #aaaaaa;
+  --neutral-hover: #888888;
+  --warn-low: #c89000;
+  --warn-mid: #d97700;
+  --warn-high: #cc2222;
+  --phase-game-bg: #f5f5f5;
+  --phase-rest-bg: #c8e0ec;
+  --phase-game-color: #2c6db8;
+  --phase-rest-color: #b85700;
+  --finished-color: #2e9e2e;
+  --scrollbar-thumb: rgba(0, 0, 0, 0.25);
+  --scrollbar-track: rgba(0, 0, 0, 0.05);
+}
+
+.app.theme-hc {
+  --bg: #1a1a1a;
+  --text: #ffffff;
+  --text-muted: #cccccc;
+  --text-dim: #999999;
+  --surface: #2a2a2a;
+  --surface-2: #3a3a3a;
+  --border: #555555;
+  --primary: #00bcd4;
+  --primary-hover: #00d4f0;
+  --positive: #ffeb3b;
+  --positive-hover: #ffec5a;
+  --neutral: #666666;
+  --neutral-hover: #888888;
+  --warn-low: #ffeb3b;
+  --warn-mid: #00bcd4;
+  --warn-high: #e91e63;
+  --phase-game-bg: #1a1a1a;
+  --phase-rest-bg: #2a1a3a;
+  --phase-game-color: #00d4ff;
+  --phase-rest-color: #ffeb3b;
+  --finished-color: #00ffaa;
+  --scrollbar-thumb: rgba(255, 255, 255, 0.25);
+  --scrollbar-track: rgba(255, 255, 255, 0.05);
+}
+
+/* ============================================
+   基本レイアウト
+============================================ */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
+html { height: 100%; }
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  overflow-y: auto;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 40px;
+  padding: 20px;
+  transition: background-color 0.5s ease;
+  background-color: var(--bg);
+  color: var(--text);
+}
+
+.app.phase-game { background-color: var(--phase-game-bg); }
+.app.phase-rest { background-color: var(--phase-rest-bg); }
+
+/* ============================================
+   タイマー
+============================================ */
+
+.timer {
+  font-size: 200px;
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  color: var(--text);
+}
+
+.phase-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.phase-label {
+  font-size: 56px;
+  font-weight: bold;
+  color: var(--phase-game-color);
+}
+
+.app.phase-rest .phase-label {
+  color: var(--phase-rest-color);
+}
+
+.phase-counter {
+  font-size: 24px;
+  color: var(--text-muted);
+}
+
+.timer.warn-low { color: var(--warn-low); transition: color 0.3s ease; }
+.timer.warn-mid { color: var(--warn-mid); transition: color 0.3s ease; }
+.timer.warn-high {
+  color: var(--warn-high);
+  animation: blink 0.5s infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* No Time バッジ */
+.no-time-badge {
+  font-size: 48px;
+  font-weight: 900;
+  padding: 16px 40px;
+  border-radius: 12px;
+  background-color: var(--warn-high);
+  color: white;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  box-shadow: 0 0 30px var(--warn-high);
+  animation: no-time-pulse 0.6s ease-in-out infinite;
+}
+
+@keyframes no-time-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 0.85;
+  }
+}
+
+/* ============================================
+   設定画面
+============================================ */
+
+.setting {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.setting-title {
+  font-size: 36px;
+  font-weight: bold;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.setting-label {
+  font-size: 24px;
+  width: 110px;
+  text-align: right;
+  color: var(--text);
+}
+
+.setting-row input {
+  font-size: 36px;
+  font-weight: bold;
+  width: 90px;
+  text-align: center;
+  background-color: var(--surface);
+  color: var(--text);
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.setting-row input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.unit {
+  font-size: 20px;
+  color: var(--text-muted);
+}
+
+.setting-summary {
+  font-size: 18px;
+  color: var(--text-muted);
+  margin-top: 10px;
+  padding: 10px 20px;
+  background-color: var(--surface);
+  border-radius: 8px;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* ============================================
+   ボタン
+============================================ */
+
+.buttons {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+button {
+  font-size: 24px;
+  padding: 16px 32px;
+  border: none;
+  border-radius: 8px;
+  background-color: var(--primary);
+  color: white;
+  cursor: pointer;
+  font-weight: bold;
+  min-width: 140px;
+  transition: background-color 0.2s ease;
+}
+
+button:disabled {
+  background-color: var(--neutral);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+button:hover:not(:disabled) {
+  background-color: var(--primary-hover);
+}
+
+.lock-button {
+  background-color: var(--neutral);
+}
+
+.lock-button:hover:not(:disabled) {
+  background-color: var(--neutral-hover);
+}
+
+.app.theme-light button {
+  color: white;
+}
+
+.app.theme-hc .preset-save {
+  color: #1a1a1a;
+}
+
+/* ============================================
+   全試合終了画面
+============================================ */
+
+.all-done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.finished-message {
+  font-size: 64px;
+  color: var(--finished-color);
+  font-weight: bold;
+  animation: pulse 1.5s infinite;
+}
+
+.finished-summary {
+  font-size: 32px;
+  color: var(--text-muted);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* ============================================
+   プリセット
+============================================ */
+
+.setup-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  width: 100%;
+  max-width: 700px;
+  padding: 20px;
+}
+
+.presets {
+  width: 100%;
+  background-color: var(--surface);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.presets-title {
+  font-size: 20px;
+  margin-bottom: 12px;
+  color: var(--text);
+  font-weight: bold;
+}
+
+.presets-empty {
+  text-align: center;
+  color: var(--text-dim);
+  padding: 16px 0;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.presets-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+  margin-bottom: 12px;
+  padding-right: 4px;
+}
+
+.preset-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: var(--surface-2);
+  padding: 12px;
+  border-radius: 8px;
+  gap: 12px;
+}
+
+.preset-info { flex: 1; min-width: 0; }
+
+.preset-name {
+  font-size: 16px;
+  font-weight: bold;
+  color: var(--text);
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preset-summary {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.preset-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.preset-load,
+.preset-delete {
+  font-size: 14px;
+  padding: 8px 14px;
+  min-width: auto;
+  font-weight: normal;
+}
+
+.preset-load { background-color: var(--primary); }
+.preset-delete { background-color: var(--neutral); }
+.preset-delete:hover:not(:disabled) { background-color: var(--neutral-hover); }
+
+.preset-save {
+  font-size: 16px;
+  padding: 12px 24px;
+  background-color: var(--positive);
+  width: 100%;
+}
+
+.preset-save:hover:not(:disabled) { background-color: var(--positive-hover); }
+
+/* ============================================
+   音声・テーマ選択
+============================================ */
+
+.voice-row { align-items: center; }
+
+.voice-mode-selector {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.voice-mode-btn {
+  font-size: 14px;
+  padding: 10px 14px;
+  min-width: 100px;
+  border-radius: 8px;
+  background-color: var(--surface-2);
+  color: var(--text-muted);
+  font-weight: normal;
+}
+
+.voice-mode-btn.active {
+  background-color: var(--primary);
+  color: white;
+  font-weight: bold;
+}
+
+.voice-mode-btn:hover:not(:disabled) { opacity: 0.85; }
+
+/* ============================================
+   ロック画面
+============================================ */
+
+.locked-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.locked-icon {
+  font-size: 64px;
+  opacity: 0.7;
+}
+
+.unlock-button {
+  position: relative;
+  background-color: var(--surface-2);
+  color: var(--text);
+  font-size: 18px;
+  padding: 24px 40px;
+  border-radius: 12px;
+  border: 2px solid var(--border);
+  min-width: 320px;
+  overflow: hidden;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+.unlock-progress {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  background-color: var(--primary);
+  transition: width 0.03s linear;
+}
+
+.unlock-text {
+  position: relative;
+  z-index: 1;
+  font-weight: bold;
+}
+
+/* ============================================
+   縦画面用
+============================================ */
+
+.timer.portrait {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0;
+  font-size: 280px;
+  line-height: 1;
+}
+
+.timer.portrait .big-min {
+  font-size: 1em;
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+}
+
+.timer.portrait .separator-portrait {
+  font-size: 0.6em;
+  margin: 0 0.05em;
+  opacity: 0.7;
+}
+
+.timer.portrait .small-sec {
+  font-size: 0.45em;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+.timer.portrait.seconds-only {
+  font-size: 60vw;
+  line-height: 0.85;
+  display: block;
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+}
+
+.is-portrait .phase-label { font-size: 64px; }
+.is-portrait .phase-counter { font-size: 28px; }
+
+/* ============================================
+   レイアウト調整
+============================================ */
+
+.app.is-setup {
+  justify-content: flex-start;
+  padding-top: 20px;
+  padding-bottom: 20px;
+}
+
+@media (min-width: 800px) and (orientation: landscape) {
+  .setup-area {
+    flex-direction: row;
+    align-items: stretch;
+    max-width: 1100px;
+    gap: 16px;
+  }
+  .setup-area > .presets,
+  .setup-area > .setting {
+    flex: 1;
+    min-width: 0;
+    max-width: 50%;
+  }
+  .setting-title { font-size: 24px; margin-bottom: 4px; }
+  .presets-title { font-size: 18px; margin-bottom: 8px; }
+  .setting-row { gap: 8px; }
+  .setting-row input { font-size: 28px; width: 70px; padding: 6px; }
+  .setting-label { font-size: 16px; width: 80px; }
+  .unit { font-size: 16px; }
+  .voice-mode-btn { font-size: 12px; padding: 8px 10px; min-width: 80px; }
+  .preset-name { font-size: 14px; }
+  .preset-summary { font-size: 12px; }
+  .preset-load, .preset-delete { font-size: 13px; padding: 6px 12px; }
+  .preset-save { font-size: 14px; padding: 10px 20px; }
+  .presets-list { max-height: 200px; }
+  .setting-summary { font-size: 16px; }
+}
+
+@media (max-height: 700px) and (orientation: landscape) {
+  .setup-area { gap: 12px; }
+  .setting-row input { font-size: 24px; width: 60px; }
+  .presets-list { max-height: 150px; }
+}
+
+@media (max-height: 700px) {
+  .app.is-setup {
+    height: 100vh;
+    overflow: hidden;
+    padding: 0;
+    gap: 0;
+    justify-content: space-between;
+  }
+  .app.is-setup > .setup-area {
+    flex: 1;
+    overflow-y: auto;
+    width: 100%;
+    max-width: 1100px;
+    padding: 16px;
+    margin: 0 auto;
+  }
+  .app.is-setup > .buttons {
+    flex-shrink: 0;
+    width: 100%;
+    padding: 12px;
+    margin: 0;
+    background-color: rgba(26, 26, 26, 0.95);
+    border-top: 1px solid var(--border);
+    justify-content: center;
+  }
+  .app.theme-light.is-setup > .buttons {
+    background-color: rgba(245, 245, 245, 0.95);
+  }
+}
+
+/* ============================================
+   スクロールバー
+============================================ */
+
+body::-webkit-scrollbar,
+.presets-list::-webkit-scrollbar,
+.setup-area::-webkit-scrollbar {
+  width: 10px;
+}
+
+body::-webkit-scrollbar-track,
+.presets-list::-webkit-scrollbar-track,
+.setup-area::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+body::-webkit-scrollbar-thumb,
+.presets-list::-webkit-scrollbar-thumb,
+.setup-area::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 5px;
+}
+
+/* ============================================
+   ベンチモード（NEW）
+============================================ */
+
+.bench-button {
+  background-color: var(--neutral);
+}
+
+.bench-button:hover:not(:disabled) {
+  background-color: var(--neutral-hover);
+}
+
+/* ベンチモード時のタイマー巨大化 */
+.app.bench-mode .timer {
+  font-size: 32vw;
+  line-height: 1;
+}
+
+.app.bench-mode.is-portrait .timer.portrait {
+  font-size: 40vw;
+}
+
+.app.bench-mode.is-portrait .timer.portrait.seconds-only {
+  font-size: 75vw;
+}
+
+/* ベンチモードで操作が隠れる時のフェード */
+.bench-hidden {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.6s ease;
+}
+
+/* ベンチモード中はカーソルを消す（没入感） */
+.app.bench-mode {
+  cursor: default;
+}
