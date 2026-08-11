@@ -1,14 +1,44 @@
 import { useState, useEffect, useRef } from 'react'
 import './App.css'
 
+const TEAM_LETTERS = ['A', 'B', 'C', 'D', 'E']
+const LOOP_MAX_GAMES = 99
+
+function generateRoundRobinMatches(count) {
+  let teams = Array.from({ length: count }, (_, i) => i)
+  if (teams.length % 2 !== 0) {
+    teams = [...teams, null]
+  }
+  const n = teams.length
+  const matches = []
+  let arr = [teams[0], ...teams.slice(1).reverse()]
+  for (let round = 0; round < n - 1; round++) {
+    for (let i = 0; i < n / 2; i++) {
+      const t1 = arr[i]
+      const t2 = arr[n - 1 - i]
+      if (t1 !== null && t2 !== null) {
+        matches.push(t1 < t2 ? [t1, t2] : [t2, t1])
+      }
+    }
+    const fixed = arr[0]
+    const rest = arr.slice(1)
+    rest.unshift(rest.pop())
+    arr = [fixed, ...rest]
+  }
+  return matches
+}
+
 function App() {
   const [gameMinutes, setGameMinutes] = useState(10)
   const [gameSeconds, setGameSeconds] = useState(0)
   const [restMinutes, setRestMinutes] = useState(3)
   const [restSeconds, setRestSeconds] = useState(0)
   const [numGames, setNumGames] = useState(4)
+  const [limitGames, setLimitGames] = useState(false)
   const [voiceMode, setVoiceMode] = useState('ja')
   const [theme, setTheme] = useState('dark')
+  
+  const [teamCount, setTeamCount] = useState(2)
   
   const [presets, setPresets] = useState([])
   
@@ -18,6 +48,8 @@ function App() {
   const [isRunning, setIsRunning] = useState(false)
   const [hasStarted, setHasStarted] = useState(false)
   const [isAllDone, setIsAllDone] = useState(false)
+  const [isLoopMode, setIsLoopMode] = useState(false)
+  const [completedGames, setCompletedGames] = useState(0)
   
   const [isLocked, setIsLocked] = useState(false)
   const [unlockProgress, setUnlockProgress] = useState(0)
@@ -38,6 +70,9 @@ function App() {
   const voiceJaRef = useRef(null)
   const voiceEnRef = useRef(null)
   const voiceModeRef = useRef(voiceMode)
+  
+  // チーム対戦モードかどうか（3チーム以上、NEW）
+  const isTeamMatch = teamCount >= 3
   
   useEffect(() => {
     voiceModeRef.current = voiceMode
@@ -135,9 +170,9 @@ function App() {
         }
       }
       setPresets([
-        { id: 'sample-1', name: '社会人標準', gameMinutes: 10, gameSeconds: 0, restMinutes: 3, restSeconds: 0, numGames: 4, createdAt: new Date().toISOString() },
-        { id: 'sample-2', name: '3on3', gameMinutes: 5, gameSeconds: 0, restMinutes: 2, restSeconds: 0, numGames: 3, createdAt: new Date().toISOString() },
-        { id: 'sample-3', name: '練習試合（短縮）', gameMinutes: 8, gameSeconds: 0, restMinutes: 2, restSeconds: 0, numGames: 2, createdAt: new Date().toISOString() },
+        { id: 'sample-1', name: '社会人標準', gameMinutes: 10, gameSeconds: 0, restMinutes: 3, restSeconds: 0, numGames: 4, limitGames: false, teamCount: 2, createdAt: new Date().toISOString() },
+        { id: 'sample-2', name: '3on3', gameMinutes: 5, gameSeconds: 0, restMinutes: 2, restSeconds: 0, numGames: 3, limitGames: false, teamCount: 2, createdAt: new Date().toISOString() },
+        { id: 'sample-4', name: '4チーム総当たり', gameMinutes: 8, gameSeconds: 0, restMinutes: 2, restSeconds: 0, numGames: 6, limitGames: false, teamCount: 4, createdAt: new Date().toISOString() },
       ])
     } catch (e) {}
   }, [])
@@ -180,7 +215,13 @@ function App() {
   
   useEffect(() => {
     if (secondsLeft === 0 && hasStarted && !isAllDone && phases.length > 0) {
+      const finishedPhase = phases[currentPhaseIndex]
       const nextIndex = currentPhaseIndex + 1
+      
+      if (finishedPhase.type === 'game') {
+        setCompletedGames((prev) => prev + 1)
+      }
+      
       if (nextIndex >= phases.length) {
         setIsRunning(false)
         setIsAllDone(true)
@@ -196,10 +237,14 @@ function App() {
         const next = phases[nextIndex]
         setTimeout(() => {
           if (next.type === 'game') {
-            speak(
-              `${next.gameNumber}試合目を開始します`,
-              `Game ${next.gameNumber}, start`
-            )
+            if (next.teamA) {
+              speak(
+                `${next.teamA}対${next.teamB}、試合開始です`,
+                `Team ${next.teamA} vs Team ${next.teamB}, start`
+              )
+            } else {
+              speak('次の試合を開始します', 'Next game, start')
+            }
           } else {
             speak('休憩に入ります', 'Break time')
           }
@@ -208,7 +253,6 @@ function App() {
     }
   }, [secondsLeft, hasStarted, isAllDone, currentPhaseIndex, phases])
   
-  // 残り時間警告 + カウントダウン（3,2,1秒前）
   useEffect(() => {
     if (isRunning) {
       const prev = prevSecondsRef.current
@@ -253,7 +297,6 @@ function App() {
     }
   }
   
-  // 電子ホイッスル音の生成コア
   const createWhistleTone = (startTime, duration, baseFreq = 2900, peakVolume = 0.9) => {
     const ctx = audioContextRef.current
     if (!ctx) return
@@ -302,7 +345,6 @@ function App() {
     osc3.start(startTime); osc3.stop(startTime + duration + 0.02)
   }
   
-  // カウントダウン「ピ」音（残り3,2,1秒で使用）NEW
   const playCountdownBeep = () => {
     if (!audioContextRef.current) return
     const ctx = audioContextRef.current
@@ -321,7 +363,6 @@ function App() {
     osc.stop(startTime + 0.14)
   }
   
-  // 「ポーン」という余韻のある音（フェーズ切替・終了の瞬間に使用）NEW
   const playPoon = (startTime) => {
     if (!audioContextRef.current) return
     const ctx = audioContextRef.current
@@ -352,7 +393,6 @@ function App() {
     osc2.stop(t0 + 0.65)
   }
   
-  // フェーズ切替時：ポーン → ホイッスル2回
   const playTransitionAlarm = () => {
     if (!audioContextRef.current) return
     const ctx = audioContextRef.current
@@ -361,7 +401,6 @@ function App() {
     createWhistleTone(ctx.currentTime + 0.48, 0.18, 2900, 0.95)
   }
   
-  // 全試合終了時：ポーン → ホイッスル3回
   const playFinalAlarm = () => {
     if (!audioContextRef.current) return
     const ctx = audioContextRef.current
@@ -371,7 +410,6 @@ function App() {
     createWhistleTone(ctx.currentTime + 1.5, 0.7, 2900, 1.0)
   }
   
-  // 残り時間警告：単発ホイッスル
   const playWarningWhistle = (baseFreq) => {
     if (!audioContextRef.current) return
     const ctx = audioContextRef.current
@@ -386,36 +424,56 @@ function App() {
     const result = []
     const gameSec = gameMinutes * 60 + gameSeconds
     const restSec = restMinutes * 60 + restSeconds
-    for (let i = 0; i < numGames; i++) {
+    const targetGames = limitGames ? numGames : LOOP_MAX_GAMES
+    
+    let roundRobinMatches = []
+    if (isTeamMatch) {
+      roundRobinMatches = generateRoundRobinMatches(teamCount)
+    }
+    
+    for (let i = 0; i < targetGames; i++) {
+      let label, teamA, teamB
+      if (isTeamMatch && roundRobinMatches.length > 0) {
+        const pair = roundRobinMatches[i % roundRobinMatches.length]
+        teamA = TEAM_LETTERS[pair[0]]
+        teamB = TEAM_LETTERS[pair[1]]
+        label = `${teamA} vs ${teamB}`
+      } else {
+        label = limitGames ? `第${i + 1}試合` : '試合中'
+      }
+      
       result.push({
         type: 'game',
-        label: `第${i + 1}試合`,
+        label,
         gameNumber: i + 1,
+        teamA,
+        teamB,
         durationSec: gameSec,
       })
-      if (i < numGames - 1) {
+      if (i < targetGames - 1) {
         result.push({ type: 'rest', label: '休憩', durationSec: restSec })
       }
     }
     return result
   }
   
-  const totalSeconds = (() => {
-    const gs = gameMinutes * 60 + gameSeconds
-    const rs = restMinutes * 60 + restSeconds
-    return gs * numGames + rs * Math.max(0, numGames - 1)
-  })()
+  const gameSecCalc = gameMinutes * 60 + gameSeconds
+  const restSecCalc = restMinutes * 60 + restSeconds
+  const totalSeconds = gameSecCalc * numGames + restSecCalc * Math.max(0, numGames - 1)
   const totalMin = Math.floor(totalSeconds / 60)
   const totalSec = totalSeconds % 60
   
   const handleSavePreset = () => {
-    const defaultName = `${gameMinutes}分×${numGames}試合`
+    const defaultName = isTeamMatch
+      ? `${teamCount}チーム総当たり`
+      : (limitGames ? `${gameMinutes}分×${numGames}試合` : `${gameMinutes}分 連続`)
     const name = prompt('プリセット名を入力してください:', defaultName)
     if (!name || !name.trim()) return
     setPresets([...presets, {
       id: Date.now().toString(),
       name: name.trim(),
-      gameMinutes, gameSeconds, restMinutes, restSeconds, numGames,
+      gameMinutes, gameSeconds, restMinutes, restSeconds, numGames, limitGames,
+      teamCount,
       createdAt: new Date().toISOString(),
     }])
   }
@@ -426,6 +484,8 @@ function App() {
     setRestMinutes(preset.restMinutes)
     setRestSeconds(preset.restSeconds)
     setNumGames(preset.numGames)
+    setLimitGames(preset.limitGames || false)
+    setTeamCount(preset.teamCount || 2)
   }
   
   const handleDeletePreset = (presetId, presetName) => {
@@ -443,10 +503,19 @@ function App() {
       setCurrentPhaseIndex(0)
       setSecondsLeft(newPhases[0].durationSec)
       prevSecondsRef.current = newPhases[0].durationSec
-      setTimeout(() => speak(
-        `${newPhases[0].gameNumber}試合目を開始します`,
-        `Game ${newPhases[0].gameNumber}, start`
-      ), 100)
+      setIsLoopMode(!limitGames)
+      setCompletedGames(0)
+      setTimeout(() => {
+        const first = newPhases[0]
+        if (first.teamA) {
+          speak(
+            `${first.teamA}対${first.teamB}、試合開始です`,
+            `Team ${first.teamA} vs Team ${first.teamB}, start`
+          )
+        } else {
+          speak('試合開始です', 'Game start')
+        }
+      }, 100)
     }
     setIsRunning(true)
     setHasStarted(true)
@@ -455,13 +524,24 @@ function App() {
   
   const handlePause = () => setIsRunning(false)
   
-  const handleReset = () => {
+  const handleRedoCurrent = () => {
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel()
+    if (!currentPhase) return
+    setIsRunning(false)
+    setSecondsLeft(currentPhase.durationSec)
+    prevSecondsRef.current = currentPhase.durationSec
+  }
+  
+  const handleFinish = () => {
+    if (!confirm('タイマーを終了して設定画面に戻りますか？')) return
     if ('speechSynthesis' in window) window.speechSynthesis.cancel()
     setIsRunning(false)
     setHasStarted(false)
     setIsAllDone(false)
     setIsLocked(false)
     setIsBenchMode(false)
+    setIsLoopMode(false)
+    setCompletedGames(0)
     clearTimeout(benchTimerRef.current)
     setCurrentPhaseIndex(0)
     setSecondsLeft(0)
@@ -534,9 +614,9 @@ function App() {
   const formatPresetSummary = (p) => {
     const gameStr = p.gameSeconds > 0 ? `${p.gameMinutes}分${p.gameSeconds}秒` : `${p.gameMinutes}分`
     const restStr = p.restSeconds > 0 ? `${p.restMinutes}分${p.restSeconds}秒` : `${p.restMinutes}分`
-    return p.numGames > 1
-      ? `試合 ${gameStr} × ${p.numGames} / 休憩 ${restStr}`
-      : `試合 ${gameStr} × 1`
+    const modeStr = (p.teamCount >= 3) ? `${p.teamCount}チーム総当たり / ` : ''
+    const gamesStr = p.limitGames ? `${p.numGames}試合` : '連続'
+    return `${modeStr}試合 ${gameStr} × ${gamesStr} / 休憩 ${restStr}`
   }
   
   const renderTimer = () => {
@@ -560,6 +640,12 @@ function App() {
   }
   
   const benchHideClass = isBenchMode && !controlsVisible ? 'bench-hidden' : ''
+  
+  const teamSchedulePreview = isTeamMatch
+    ? generateRoundRobinMatches(teamCount).map(([a, b]) => `${TEAM_LETTERS[a]} vs ${TEAM_LETTERS[b]}`).join(' → ')
+    : ''
+  
+  const showPhaseCounter = limitGames && currentPhase
   
   return (
     <div
@@ -614,11 +700,32 @@ function App() {
                 onChange={(e) => setRestSeconds(Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))} />
               <span className="unit">秒</span>
             </div>
-            <div className="setting-row">
+            
+            <div className="setting-row voice-row">
               <span className="setting-label">試合数</span>
-              <input type="number" min="1" max="20" value={numGames}
-                onChange={(e) => setNumGames(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))} />
-              <span className="unit">試合</span>
+              <div className="voice-mode-selector">
+                <button className={`voice-mode-btn ${!limitGames ? 'active' : ''}`} onClick={() => setLimitGames(false)}>♾️ 連続（自動）</button>
+                <button className={`voice-mode-btn ${limitGames ? 'active' : ''}`} onClick={() => setLimitGames(true)}>回数を指定</button>
+              </div>
+            </div>
+            
+            {limitGames && (
+              <div className="setting-row">
+                <span className="setting-label">試合数</span>
+                <input type="number" min="1" max="30" value={numGames}
+                  onChange={(e) => setNumGames(Math.max(1, Math.min(30, parseInt(e.target.value) || 1)))} />
+                <span className="unit">試合</span>
+              </div>
+            )}
+            
+            <div className="setting-row voice-row">
+              <span className="setting-label">チーム数</span>
+              <div className="voice-mode-selector">
+                <button className={`voice-mode-btn ${teamCount === 2 ? 'active' : ''}`} onClick={() => setTeamCount(2)}>2チーム（連続）</button>
+                <button className={`voice-mode-btn ${teamCount === 3 ? 'active' : ''}`} onClick={() => setTeamCount(3)}>3チーム</button>
+                <button className={`voice-mode-btn ${teamCount === 4 ? 'active' : ''}`} onClick={() => setTeamCount(4)}>4チーム</button>
+                <button className={`voice-mode-btn ${teamCount === 5 ? 'active' : ''}`} onClick={() => setTeamCount(5)}>5チーム</button>
+              </div>
             </div>
             
             <div className="setting-row voice-row">
@@ -639,21 +746,36 @@ function App() {
               </div>
             </div>
             
-            <div className="setting-summary">
-              合計時間: {totalMin}分{totalSec}秒
-            </div>
+            {limitGames ? (
+              <div className="setting-summary">
+                合計時間: {totalMin}分{totalSec}秒
+              </div>
+            ) : (
+              <div className="setting-summary">
+                「終了」を押すまで自動で繰り返します
+              </div>
+            )}
+            
+            {isTeamMatch && (
+              <div className="setting-summary">
+                対戦順: {teamSchedulePreview}（以降ループ）
+              </div>
+            )}
           </div>
         </div>
       ) : isAllDone ? (
         <div className="all-done">
           <div className="finished-message">お疲れさまでした！</div>
-          <div className="finished-summary">{numGames}試合 完了</div>
+          <div className="finished-summary">{completedGames}試合 完了</div>
+          <button onClick={handleFinish}>設定に戻る</button>
         </div>
       ) : (
         <>
           <div className={`phase-info ${benchHideClass}`}>
             <div className="phase-label">{currentPhase?.label}</div>
-            <div className="phase-counter">{currentPhaseIndex + 1} / {phases.length}</div>
+            {showPhaseCounter && (
+              <div className="phase-counter">{currentPhaseIndex + 1} / {phases.length}</div>
+            )}
           </div>
           {renderTimer()}
           {isRunning && secondsLeft > 0 && secondsLeft <= 15 && (
@@ -684,24 +806,25 @@ function App() {
           {!isRunning && (
             <button onClick={handleStart}>再開</button>
           )}
+          <button onClick={handleRedoCurrent} className="lock-button">↻ やり直し</button>
           <button onClick={exitBenchMode} className="lock-button">✕ 通常表示</button>
         </div>
-      ) : (
+      ) : !isAllDone && (
         <div className="buttons">
-          {!isAllDone && (
-            <button onClick={handleStart} disabled={isRunning}>
-              {!hasStarted ? 'スタート' : isRunning ? '動作中' : '再開'}
-            </button>
-          )}
-          {hasStarted && !isAllDone && (
-            <button onClick={handlePause} disabled={!isRunning}>一時停止</button>
-          )}
-          <button onClick={handleReset}>リセット</button>
-          {hasStarted && !isAllDone && (
-            <button onClick={handleLock} className="lock-button">🔒 ロック</button>
-          )}
-          {hasStarted && !isAllDone && (
-            <button onClick={enterBenchMode} className="bench-button">📺 大画面</button>
+          {!hasStarted ? (
+            <button onClick={handleStart} disabled={isRunning}>スタート</button>
+          ) : (
+            <>
+              {isRunning ? (
+                <button onClick={handlePause}>一時停止</button>
+              ) : (
+                <button onClick={handleStart}>再開</button>
+              )}
+              <button onClick={handleRedoCurrent} className="lock-button">↻ やり直し</button>
+              <button onClick={handleFinish} className="lock-button">終了</button>
+              <button onClick={handleLock} className="lock-button">🔒 ロック</button>
+              <button onClick={enterBenchMode} className="bench-button">📺 大画面</button>
+            </>
           )}
         </div>
       )}
