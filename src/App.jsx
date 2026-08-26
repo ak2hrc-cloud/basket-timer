@@ -102,7 +102,7 @@ function App() {
     typeof window !== 'undefined' && window.innerHeight > window.innerWidth
   )
   
-  const appRootRef = useRef(null) // フルスクリーン対象要素（NEW）
+  const appRootRef = useRef(null)
   const audioContextRef = useRef(null)
   const prevSecondsRef = useRef(0)
   const wakeLockRef = useRef(null)
@@ -168,7 +168,6 @@ function App() {
     }
   }, [])
   
-  // フルスクリーン状態の監視（NEW：システム操作等で勝手に解除された場合にベンチモードも解除）
   useEffect(() => {
     const handleFullscreenChange = () => {
       const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement)
@@ -332,20 +331,21 @@ function App() {
     }
   }, [secondsLeft, hasStarted, isAllDone, currentPhaseIndex, phases])
   
+  // 残り時間警告（60/30/10秒）を「控えめなピピッ」に変更、NEW
   useEffect(() => {
     if (isRunning) {
       const prev = prevSecondsRef.current
       if (prev === secondsLeft + 1) {
         if (secondsLeft === 60) {
-          playWarningWhistle(2600)
+          playSoftWarningBeep(700)
           setTimeout(() => speak('残り1分です', 'One minute remaining'), 300)
         }
         else if (secondsLeft === 30) {
-          playWarningWhistle(2900)
+          playSoftWarningBeep(850)
           setTimeout(() => speak('残り30秒です', 'Thirty seconds remaining'), 300)
         }
         else if (secondsLeft === 10) {
-          playWarningWhistle(3200)
+          playSoftWarningBeep(1000)
           setTimeout(() => speak('残り10秒です', 'Ten seconds'), 300)
         }
         else if (secondsLeft === 3 || secondsLeft === 2 || secondsLeft === 1) {
@@ -370,7 +370,6 @@ function App() {
     }
   }
   
-  // フルスクリーン開始（NEW）
   const requestFullscreenSafe = () => {
     const el = appRootRef.current
     if (!el) return
@@ -383,7 +382,6 @@ function App() {
     } catch (e) {}
   }
   
-  // フルスクリーン終了（NEW）
   const exitFullscreenSafe = () => {
     try {
       if (document.fullscreenElement && document.exitFullscreen) {
@@ -466,6 +464,27 @@ function App() {
     osc.stop(startTime + 0.14)
   }
   
+  // 控えめな「ピピッ」警告音（NEW：ホイッスルと明確に区別するため正弦波のみ・低〜中音域）
+  const playSoftWarningBeep = (baseFreq) => {
+    if (!audioContextRef.current) return
+    const ctx = audioContextRef.current
+    
+    for (let i = 0; i < 2; i++) {
+      const startTime = ctx.currentTime + i * 0.16
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(baseFreq, startTime)
+      gain.gain.setValueAtTime(0, startTime)
+      gain.gain.linearRampToValueAtTime(0.35, startTime + 0.008)
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.1)
+      osc.start(startTime)
+      osc.stop(startTime + 0.12)
+    }
+  }
+  
   const playPoon = (startTime) => {
     if (!audioContextRef.current) return
     const ctx = audioContextRef.current
@@ -511,12 +530,6 @@ function App() {
     createWhistleTone(ctx.currentTime + 0.2, 0.5, 2900, 1.0)
     createWhistleTone(ctx.currentTime + 0.85, 0.5, 2900, 1.0)
     createWhistleTone(ctx.currentTime + 1.5, 0.7, 2900, 1.0)
-  }
-  
-  const playWarningWhistle = (baseFreq) => {
-    if (!audioContextRef.current) return
-    const ctx = audioContextRef.current
-    createWhistleTone(ctx.currentTime, 0.2, baseFreq, 0.95)
   }
   
   const minutes = Math.floor(secondsLeft / 60)
@@ -749,7 +762,6 @@ function App() {
     }, 3000)
   }
   
-  // ベンチモード開始（NEW：フルスクリーンも要求）
   const enterBenchMode = () => {
     setIsBenchMode(true)
     setControlsVisible(true)
@@ -757,7 +769,6 @@ function App() {
     requestFullscreenSafe()
   }
   
-  // ベンチモード終了（NEW：フルスクリーンも解除）
   const exitBenchMode = () => {
     setIsBenchMode(false)
     setControlsVisible(true)
@@ -1015,7 +1026,6 @@ function App() {
             )}
           </div>
           {renderTimer()}
-          {/* No Time バッジ：休憩中は表示しない（NEW） */}
           {isRunning && !isRestPhase && secondsLeft > 0 && secondsLeft <= 15 && (
             <div className="no-time-badge">No Time</div>
           )}
