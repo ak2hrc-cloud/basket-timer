@@ -11,7 +11,6 @@ const COLOR_EN = {
   '赤': 'Red', '黄': 'Yellow', '緑': 'Green', '橙': 'Orange',
   '青': 'Blue', '白': 'White', '黒': 'Black',
 }
-const CHECK_DARK_COLORS = new Set(['白', '黄'])
 const DEFAULT_TEAM_COLORS = ['赤', '青', '緑', '白', '黒']
 const LOOP_MAX_GAMES = 99
 
@@ -77,8 +76,8 @@ function App() {
   const [theme, setTheme] = useState('dark')
   
   const [teamCount, setTeamCount] = useState(2)
-  const [labelStyle, setLabelStyle] = useState('alpha') // 'alpha' | 'number' | 'color' NEW
-  const [teamColors, setTeamColors] = useState(DEFAULT_TEAM_COLORS) // NEW
+  const [labelStyle, setLabelStyle] = useState('alpha')
+  const [teamColors, setTeamColors] = useState(DEFAULT_TEAM_COLORS)
   
   const [presets, setPresets] = useState([])
   
@@ -115,14 +114,12 @@ function App() {
   
   const isTeamMatch = teamCount >= 3
   
-  // チームラベル生成（表示用、NEW）
   const getTeamLabel = (index) => {
     if (labelStyle === 'number') return String(index + 1)
     if (labelStyle === 'color') return teamColors[index] || TEAM_LETTERS[index]
     return TEAM_LETTERS[index]
   }
   
-  // チームラベル生成（英語音声用、NEW）
   const getTeamLabelEn = (index) => {
     if (labelStyle === 'color') return COLOR_EN[teamColors[index]] || TEAM_LETTERS[index]
     return getTeamLabel(index)
@@ -878,7 +875,6 @@ function App() {
               </div>
             </div>
             
-            {/* チーム表示形式（NEW、3チーム以上のみ） */}
             {isTeamMatch && (
               <div className="setting-row voice-row">
                 <span className="setting-label">表示形式</span>
@@ -890,7 +886,7 @@ function App() {
               </div>
             )}
             
-            {/* チーム別カラー選択（NEW、色モード時のみ） */}
+            {/* チーム別カラー選択（色名を常時表示、NEW） */}
             {isTeamMatch && labelStyle === 'color' && (
               <div className="team-color-config">
                 {Array.from({ length: teamCount }).map((_, i) => (
@@ -903,12 +899,11 @@ function App() {
                           className={`color-swatch ${teamColors[i] === color ? 'active' : ''}`}
                           style={{
                             backgroundColor: COLOR_HEX[color],
-                            color: CHECK_DARK_COLORS.has(color) ? '#222' : '#fff',
+                            color: color === '黒' ? '#ffffff' : '#000000',
                           }}
                           onClick={() => handleSetTeamColor(i, color)}
-                          title={color}
                         >
-                          {teamColors[i] === color ? '✓' : ''}
+                          {COLOR_EN[color]}
                         </button>
                       ))}
                     </div>

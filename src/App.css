@@ -715,3 +715,58 @@ body::-webkit-scrollbar-thumb,
 .is-portrait .official-label {
   font-size: 16px;
 }
+
+/* チーム別カラー設定 */
+.team-color-config {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  padding: 12px;
+  background-color: var(--surface);
+  border-radius: 10px;
+}
+
+.team-color-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.team-color-row-label {
+  font-size: 15px;
+  color: var(--text);
+  min-width: 70px;
+  text-align: right;
+}
+
+.color-swatch-selector {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.color-swatch {
+  min-width: 68px;
+  height: 36px;
+  border-radius: 8px;
+  border: 2px solid var(--border);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: bold;
+  padding: 0 10px;
+}
+
+.color-swatch.active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary);
+}
+
+.color-swatch:hover {
+  opacity: 0.85;
+}
