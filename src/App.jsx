@@ -102,6 +102,7 @@ function App() {
     typeof window !== 'undefined' && window.innerHeight > window.innerWidth
   )
   
+  const appRootRef = useRef(null) // フルスクリーン対象要素（NEW）
   const audioContextRef = useRef(null)
   const prevSecondsRef = useRef(0)
   const wakeLockRef = useRef(null)
@@ -166,6 +167,24 @@ function App() {
       window.removeEventListener('orientationchange', handleResize)
     }
   }, [])
+  
+  // フルスクリーン状態の監視（NEW：システム操作等で勝手に解除された場合にベンチモードも解除）
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement)
+      if (!isFs && isBenchMode) {
+        setIsBenchMode(false)
+        setControlsVisible(true)
+        clearTimeout(benchTimerRef.current)
+      }
+    }
+    document.addEventListener('fullscreenchange', handleFullscreenChange)
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange)
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange)
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange)
+    }
+  }, [isBenchMode])
   
   useEffect(() => {
     if (!('speechSynthesis' in window)) return
@@ -349,6 +368,30 @@ function App() {
       try { await wakeLockRef.current.release() } catch (err) {}
       wakeLockRef.current = null
     }
+  }
+  
+  // フルスクリーン開始（NEW）
+  const requestFullscreenSafe = () => {
+    const el = appRootRef.current
+    if (!el) return
+    try {
+      if (el.requestFullscreen) {
+        el.requestFullscreen().catch(() => {})
+      } else if (el.webkitRequestFullscreen) {
+        el.webkitRequestFullscreen()
+      }
+    } catch (e) {}
+  }
+  
+  // フルスクリーン終了（NEW）
+  const exitFullscreenSafe = () => {
+    try {
+      if (document.fullscreenElement && document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {})
+      } else if (document.webkitFullscreenElement && document.webkitExitFullscreen) {
+        document.webkitExitFullscreen()
+      }
+    } catch (e) {}
   }
   
   const initAudio = () => {
@@ -706,16 +749,20 @@ function App() {
     }, 3000)
   }
   
+  // ベンチモード開始（NEW：フルスクリーンも要求）
   const enterBenchMode = () => {
     setIsBenchMode(true)
     setControlsVisible(true)
     scheduleHideControls()
+    requestFullscreenSafe()
   }
   
+  // ベンチモード終了（NEW：フルスクリーンも解除）
   const exitBenchMode = () => {
     setIsBenchMode(false)
     setControlsVisible(true)
     clearTimeout(benchTimerRef.current)
+    exitFullscreenSafe()
   }
   
   const handleScreenTap = () => {
@@ -796,6 +843,7 @@ function App() {
   
   return (
     <div
+      ref={appRootRef}
       className={`app theme-${theme} ${phaseClass} ${isPortrait ? 'is-portrait' : ''} ${!hasStarted ? 'is-setup' : ''} ${isBenchMode ? 'bench-mode' : ''}`}
       onClick={isBenchMode ? handleScreenTap : undefined}
     >
@@ -886,7 +934,6 @@ function App() {
               </div>
             )}
             
-            {/* チーム別カラー選択（色名を常時表示、NEW） */}
             {isTeamMatch && labelStyle === 'color' && (
               <div className="team-color-config">
                 {Array.from({ length: teamCount }).map((_, i) => (
@@ -968,7 +1015,8 @@ function App() {
             )}
           </div>
           {renderTimer()}
-          {isRunning && secondsLeft > 0 && secondsLeft <= 15 && (
+          {/* No Time バッジ：休憩中は表示しない（NEW） */}
+          {isRunning && !isRestPhase && secondsLeft > 0 && secondsLeft <= 15 && (
             <div className="no-time-badge">No Time</div>
           )}
         </>
