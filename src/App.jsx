@@ -237,6 +237,7 @@ function App() {
     window.speechSynthesis.speak(utterance)
   }
   
+  // プリセット読み込み（社会人標準の初期値を変更、NEW）
   useEffect(() => {
     try {
       const stored = localStorage.getItem('basket-timer-presets')
@@ -248,7 +249,7 @@ function App() {
         }
       }
       setPresets([
-        { id: 'sample-1', name: '社会人標準', gameMinutes: 10, gameSeconds: 0, restMinutes: 3, restSeconds: 0, numGames: 4, limitGames: false, teamCount: 2, labelStyle: 'alpha', teamColors: DEFAULT_TEAM_COLORS, createdAt: new Date().toISOString() },
+        { id: 'sample-1', name: '社会人標準', gameMinutes: 5, gameSeconds: 0, restMinutes: 2, restSeconds: 0, numGames: 4, limitGames: false, teamCount: 2, labelStyle: 'alpha', teamColors: DEFAULT_TEAM_COLORS, voiceMode: 'none', theme: 'light', createdAt: new Date().toISOString() },
         { id: 'sample-2', name: '3on3', gameMinutes: 5, gameSeconds: 0, restMinutes: 2, restSeconds: 0, numGames: 3, limitGames: false, teamCount: 2, labelStyle: 'alpha', teamColors: DEFAULT_TEAM_COLORS, createdAt: new Date().toISOString() },
         { id: 'sample-4', name: '4チーム総当たり', gameMinutes: 8, gameSeconds: 0, restMinutes: 2, restSeconds: 0, numGames: 6, limitGames: false, teamCount: 4, labelStyle: 'alpha', teamColors: DEFAULT_TEAM_COLORS, createdAt: new Date().toISOString() },
       ])
@@ -331,7 +332,6 @@ function App() {
     }
   }, [secondsLeft, hasStarted, isAllDone, currentPhaseIndex, phases])
   
-  // 残り時間警告（60/30/10秒）を「控えめなピピッ」に変更、NEW
   useEffect(() => {
     if (isRunning) {
       const prev = prevSecondsRef.current
@@ -464,7 +464,6 @@ function App() {
     osc.stop(startTime + 0.14)
   }
   
-  // 控えめな「ピピッ」警告音（NEW：ホイッスルと明確に区別するため正弦波のみ・低〜中音域）
   const playSoftWarningBeep = (baseFreq) => {
     if (!audioContextRef.current) return
     const ctx = audioContextRef.current
@@ -598,19 +597,21 @@ function App() {
   const totalMin = Math.floor(totalSeconds / 60)
   const totalSec = totalSeconds % 60
   
+  // プリセット保存（新規作成分を先頭に追加、NEW）
   const handleSavePreset = () => {
     const defaultName = isTeamMatch
       ? `${teamCount}チーム総当たり`
       : (limitGames ? `${gameMinutes}分×${numGames}試合` : `${gameMinutes}分 連続`)
     const name = prompt('プリセット名を入力してください:', defaultName)
     if (!name || !name.trim()) return
-    setPresets([...presets, {
+    const newPreset = {
       id: Date.now().toString(),
       name: name.trim(),
       gameMinutes, gameSeconds, restMinutes, restSeconds, numGames, limitGames,
       teamCount, labelStyle, teamColors,
       createdAt: new Date().toISOString(),
-    }])
+    }
+    setPresets([newPreset, ...presets])
   }
   
   const handleLoadPreset = (preset) => {
@@ -623,6 +624,8 @@ function App() {
     setTeamCount(preset.teamCount || 2)
     setLabelStyle(preset.labelStyle || 'alpha')
     setTeamColors(preset.teamColors || DEFAULT_TEAM_COLORS)
+    if (preset.voiceMode) setVoiceMode(preset.voiceMode)
+    if (preset.theme) setTheme(preset.theme)
   }
   
   const handleDeletePreset = (presetId, presetName) => {

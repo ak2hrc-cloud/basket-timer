@@ -387,7 +387,7 @@ button:hover:not(:disabled) {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 240px;
+  max-height: 420px;
   overflow-y: auto;
   margin-bottom: 12px;
   padding-right: 4px;
