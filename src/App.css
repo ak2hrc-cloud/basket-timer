@@ -700,3 +700,18 @@ body::-webkit-scrollbar-thumb,
 .app.bench-mode {
   cursor: default;
 }
+
+/* オフィシャル表示（NEW） */
+.official-label {
+  font-size: 18px;
+  color: var(--text-dim);
+  margin-top: 4px;
+  padding: 4px 12px;
+  background-color: var(--surface);
+  border-radius: 6px;
+  display: inline-block;
+}
+
+.is-portrait .official-label {
+  font-size: 16px;
+}

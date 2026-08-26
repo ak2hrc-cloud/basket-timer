@@ -28,6 +28,39 @@ function generateRoundRobinMatches(count) {
   return matches
 }
 
+// オフィシャル（出場していないチームの中から均等に割り当て）NEW
+function assignOfficials(matches, teamCount) {
+  const officiateCount = Array(teamCount).fill(0)
+  const lastOfficiated = Array(teamCount).fill(-1)
+  const officials = []
+  
+  matches.forEach((match, idx) => {
+    const playing = new Set(match)
+    const resting = []
+    for (let t = 0; t < teamCount; t++) {
+      if (!playing.has(t)) resting.push(t)
+    }
+    if (resting.length === 0) {
+      officials.push(null)
+      return
+    }
+    let best = resting[0]
+    for (const t of resting) {
+      if (
+        officiateCount[t] < officiateCount[best] ||
+        (officiateCount[t] === officiateCount[best] && lastOfficiated[t] < lastOfficiated[best])
+      ) {
+        best = t
+      }
+    }
+    officials.push(best)
+    officiateCount[best]++
+    lastOfficiated[best] = idx
+  })
+  
+  return officials
+}
+
 function App() {
   const [gameMinutes, setGameMinutes] = useState(10)
   const [gameSeconds, setGameSeconds] = useState(0)
@@ -57,6 +90,8 @@ function App() {
   const [isBenchMode, setIsBenchMode] = useState(false)
   const [controlsVisible, setControlsVisible] = useState(true)
   
+  const [showSchedule, setShowSchedule] = useState(false)
+  
   const [isPortrait, setIsPortrait] = useState(
     typeof window !== 'undefined' && window.innerHeight > window.innerWidth
   )
@@ -71,7 +106,6 @@ function App() {
   const voiceEnRef = useRef(null)
   const voiceModeRef = useRef(voiceMode)
   
-  // チーム対戦モードかどうか（3チーム以上、NEW）
   const isTeamMatch = teamCount >= 3
   
   useEffect(() => {
@@ -94,6 +128,7 @@ function App() {
   }, [theme])
   
   const currentPhase = phases[currentPhaseIndex]
+  const nextPhase = phases[currentPhaseIndex + 1]
   
   useEffect(() => {
     const handleResize = () => {
@@ -420,6 +455,7 @@ function App() {
   const seconds = secondsLeft % 60
   const formatted = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
   
+  // フェーズリスト構築（オフィシャル情報を各ゲームに付与、NEW）
   const buildPhases = () => {
     const result = []
     const gameSec = gameMinutes * 60 + gameSeconds
@@ -427,17 +463,22 @@ function App() {
     const targetGames = limitGames ? numGames : LOOP_MAX_GAMES
     
     let roundRobinMatches = []
+    let officialsForCycle = []
     if (isTeamMatch) {
       roundRobinMatches = generateRoundRobinMatches(teamCount)
+      officialsForCycle = assignOfficials(roundRobinMatches, teamCount)
     }
     
     for (let i = 0; i < targetGames; i++) {
-      let label, teamA, teamB
+      let label, teamA, teamB, official
       if (isTeamMatch && roundRobinMatches.length > 0) {
-        const pair = roundRobinMatches[i % roundRobinMatches.length]
+        const cycleIdx = i % roundRobinMatches.length
+        const pair = roundRobinMatches[cycleIdx]
         teamA = TEAM_LETTERS[pair[0]]
         teamB = TEAM_LETTERS[pair[1]]
         label = `${teamA} vs ${teamB}`
+        const officialIdx = officialsForCycle[cycleIdx]
+        official = officialIdx !== null && officialIdx !== undefined ? TEAM_LETTERS[officialIdx] : null
       } else {
         label = limitGames ? `第${i + 1}試合` : '試合中'
       }
@@ -448,10 +489,18 @@ function App() {
         gameNumber: i + 1,
         teamA,
         teamB,
+        official,
         durationSec: gameSec,
       })
       if (i < targetGames - 1) {
-        result.push({ type: 'rest', label: '休憩', durationSec: restSec })
+        // 休憩フェーズにも次の試合のオフィシャル情報を付与（NEW）
+        let restOfficial = null
+        if (isTeamMatch && roundRobinMatches.length > 0) {
+          const nextCycleIdx = (i + 1) % roundRobinMatches.length
+          const nextOfficialIdx = officialsForCycle[nextCycleIdx]
+          restOfficial = nextOfficialIdx !== null && nextOfficialIdx !== undefined ? TEAM_LETTERS[nextOfficialIdx] : null
+        }
+        result.push({ type: 'rest', label: '休憩', durationSec: restSec, official: restOfficial })
       }
     }
     return result
@@ -530,6 +579,52 @@ function App() {
     setIsRunning(false)
     setSecondsLeft(currentPhase.durationSec)
     prevSecondsRef.current = currentPhase.durationSec
+  }
+  
+  const handleSkipRest = () => {
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel()
+    if (!currentPhase || currentPhase.type !== 'rest') return
+    const nextIndex = currentPhaseIndex + 1
+    if (nextIndex >= phases.length) return
+    setIsRunning(false)
+    setCurrentPhaseIndex(nextIndex)
+    setSecondsLeft(phases[nextIndex].durationSec)
+    prevSecondsRef.current = phases[nextIndex].durationSec
+  }
+  
+  const handleJumpToMatch = (matchPositionInCycle) => {
+    if (!isTeamMatch) return
+    const cycleLength = generateRoundRobinMatches(teamCount).length
+    let currentGameNumber = -1
+    for (let i = 0; i <= currentPhaseIndex; i++) {
+      if (phases[i].type === 'game') currentGameNumber++
+    }
+    const currentPositionInCycle = currentGameNumber % cycleLength
+    let targetGameNumber
+    if (matchPositionInCycle > currentPositionInCycle) {
+      targetGameNumber = currentGameNumber - currentPositionInCycle + matchPositionInCycle
+    } else {
+      targetGameNumber = currentGameNumber - currentPositionInCycle + cycleLength + matchPositionInCycle
+    }
+    let gn = -1
+    let targetPhaseIndex = -1
+    for (let i = 0; i < phases.length; i++) {
+      if (phases[i].type === 'game') {
+        gn++
+        if (gn === targetGameNumber) {
+          targetPhaseIndex = i
+          break
+        }
+      }
+    }
+    if (targetPhaseIndex === -1) return
+    
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel()
+    setIsRunning(false)
+    setCurrentPhaseIndex(targetPhaseIndex)
+    setSecondsLeft(phases[targetPhaseIndex].durationSec)
+    prevSecondsRef.current = phases[targetPhaseIndex].durationSec
+    setShowSchedule(false)
   }
   
   const handleFinish = () => {
@@ -646,6 +741,26 @@ function App() {
     : ''
   
   const showPhaseCounter = limitGames && currentPhase
+  
+  const getNextLabel = () => {
+    if (!nextPhase || nextPhase.type !== 'game') return ''
+    if (nextPhase.teamA) return `${nextPhase.teamA} vs ${nextPhase.teamB}`
+    return '次の試合'
+  }
+  const isRestPhase = currentPhase?.type === 'rest'
+  const nextLabel = isRestPhase ? getNextLabel() : ''
+  
+  const getCurrentPositionInCycle = () => {
+    if (!isTeamMatch || phases.length === 0) return -1
+    const cycleLength = generateRoundRobinMatches(teamCount).length
+    let currentGameNumber = -1
+    for (let i = 0; i <= currentPhaseIndex; i++) {
+      if (phases[i].type === 'game') currentGameNumber++
+    }
+    if (currentGameNumber === -1) return -1
+    return currentGameNumber % cycleLength
+  }
+  const currentPositionInCycle = getCurrentPositionInCycle()
   
   return (
     <div
@@ -776,6 +891,13 @@ function App() {
             {showPhaseCounter && (
               <div className="phase-counter">{currentPhaseIndex + 1} / {phases.length}</div>
             )}
+            {isRestPhase && nextLabel && (
+              <div className="next-label">NEXT: {nextLabel}</div>
+            )}
+            {/* オフィシャル表示（試合中・休憩中どちらも、NEW） */}
+            {currentPhase?.official && (
+              <div className="official-label">オフィシャル: {currentPhase.official}</div>
+            )}
           </div>
           {renderTimer()}
           {isRunning && secondsLeft > 0 && secondsLeft <= 15 && (
@@ -807,6 +929,9 @@ function App() {
             <button onClick={handleStart}>再開</button>
           )}
           <button onClick={handleRedoCurrent} className="lock-button">↻ やり直し</button>
+          {isRestPhase && (
+            <button onClick={handleSkipRest} className="skip-button">▶ 次の試合へ</button>
+          )}
           <button onClick={exitBenchMode} className="lock-button">✕ 通常表示</button>
         </div>
       ) : !isAllDone && (
@@ -821,11 +946,45 @@ function App() {
                 <button onClick={handleStart}>再開</button>
               )}
               <button onClick={handleRedoCurrent} className="lock-button">↻ やり直し</button>
+              {isRestPhase && (
+                <button onClick={handleSkipRest} className="skip-button">▶ 次の試合へ</button>
+              )}
+              <button
+                onClick={() => isTeamMatch && setShowSchedule(true)}
+                className="lock-button"
+                disabled={!isTeamMatch}
+              >
+                📋 一覧
+              </button>
               <button onClick={handleFinish} className="lock-button">終了</button>
               <button onClick={handleLock} className="lock-button">🔒 ロック</button>
               <button onClick={enterBenchMode} className="bench-button">📺 大画面</button>
             </>
           )}
+        </div>
+      )}
+      
+      {showSchedule && isTeamMatch && (
+        <div className="schedule-overlay" onClick={() => setShowSchedule(false)}>
+          <div className="schedule-modal" onClick={(e) => e.stopPropagation()}>
+            <h3 className="schedule-title">対戦スケジュール</h3>
+            <div className="schedule-list">
+              {generateRoundRobinMatches(teamCount).map(([a, b], idx) => {
+                const isCurrent = idx === currentPositionInCycle
+                return (
+                  <button
+                    key={idx}
+                    className={`schedule-item ${isCurrent ? 'current' : ''}`}
+                    onClick={() => handleJumpToMatch(idx)}
+                  >
+                    <span className="schedule-match">{TEAM_LETTERS[a]} vs {TEAM_LETTERS[b]}</span>
+                    {isCurrent && <span className="schedule-current-badge">現在</span>}
+                  </button>
+                )
+              })}
+            </div>
+            <button className="schedule-close" onClick={() => setShowSchedule(false)}>閉じる</button>
+          </div>
         </div>
       )}
     </div>
