@@ -2,6 +2,17 @@ import { useState, useEffect, useRef } from 'react'
 import './App.css'
 
 const TEAM_LETTERS = ['A', 'B', 'C', 'D', 'E']
+const COLOR_OPTIONS = ['赤', '黄', '緑', '橙', '青', '白', '黒']
+const COLOR_HEX = {
+  '赤': '#e53935', '黄': '#fdd835', '緑': '#43a047', '橙': '#fb8c00',
+  '青': '#1e88e5', '白': '#ffffff', '黒': '#222222',
+}
+const COLOR_EN = {
+  '赤': 'Red', '黄': 'Yellow', '緑': 'Green', '橙': 'Orange',
+  '青': 'Blue', '白': 'White', '黒': 'Black',
+}
+const CHECK_DARK_COLORS = new Set(['白', '黄'])
+const DEFAULT_TEAM_COLORS = ['赤', '青', '緑', '白', '黒']
 const LOOP_MAX_GAMES = 99
 
 function generateRoundRobinMatches(count) {
@@ -28,13 +39,11 @@ function generateRoundRobinMatches(count) {
   return matches
 }
 
-// オフィシャル（出場していないチームの中から均等に割り当て）NEW
 function assignOfficials(matches, teamCount) {
   const officiateCount = Array(teamCount).fill(0)
-  const lastOfficiated = Array(teamCount).fill(-1)
   const officials = []
   
-  matches.forEach((match, idx) => {
+  matches.forEach((match) => {
     const playing = new Set(match)
     const resting = []
     for (let t = 0; t < teamCount; t++) {
@@ -46,16 +55,12 @@ function assignOfficials(matches, teamCount) {
     }
     let best = resting[0]
     for (const t of resting) {
-      if (
-        officiateCount[t] < officiateCount[best] ||
-        (officiateCount[t] === officiateCount[best] && lastOfficiated[t] < lastOfficiated[best])
-      ) {
+      if (officiateCount[t] < officiateCount[best]) {
         best = t
       }
     }
     officials.push(best)
     officiateCount[best]++
-    lastOfficiated[best] = idx
   })
   
   return officials
@@ -72,6 +77,8 @@ function App() {
   const [theme, setTheme] = useState('dark')
   
   const [teamCount, setTeamCount] = useState(2)
+  const [labelStyle, setLabelStyle] = useState('alpha') // 'alpha' | 'number' | 'color' NEW
+  const [teamColors, setTeamColors] = useState(DEFAULT_TEAM_COLORS) // NEW
   
   const [presets, setPresets] = useState([])
   
@@ -107,6 +114,27 @@ function App() {
   const voiceModeRef = useRef(voiceMode)
   
   const isTeamMatch = teamCount >= 3
+  
+  // チームラベル生成（表示用、NEW）
+  const getTeamLabel = (index) => {
+    if (labelStyle === 'number') return String(index + 1)
+    if (labelStyle === 'color') return teamColors[index] || TEAM_LETTERS[index]
+    return TEAM_LETTERS[index]
+  }
+  
+  // チームラベル生成（英語音声用、NEW）
+  const getTeamLabelEn = (index) => {
+    if (labelStyle === 'color') return COLOR_EN[teamColors[index]] || TEAM_LETTERS[index]
+    return getTeamLabel(index)
+  }
+  
+  const handleSetTeamColor = (teamIndex, color) => {
+    setTeamColors((prev) => {
+      const next = [...prev]
+      next[teamIndex] = color
+      return next
+    })
+  }
   
   useEffect(() => {
     voiceModeRef.current = voiceMode
@@ -205,9 +233,9 @@ function App() {
         }
       }
       setPresets([
-        { id: 'sample-1', name: '社会人標準', gameMinutes: 10, gameSeconds: 0, restMinutes: 3, restSeconds: 0, numGames: 4, limitGames: false, teamCount: 2, createdAt: new Date().toISOString() },
-        { id: 'sample-2', name: '3on3', gameMinutes: 5, gameSeconds: 0, restMinutes: 2, restSeconds: 0, numGames: 3, limitGames: false, teamCount: 2, createdAt: new Date().toISOString() },
-        { id: 'sample-4', name: '4チーム総当たり', gameMinutes: 8, gameSeconds: 0, restMinutes: 2, restSeconds: 0, numGames: 6, limitGames: false, teamCount: 4, createdAt: new Date().toISOString() },
+        { id: 'sample-1', name: '社会人標準', gameMinutes: 10, gameSeconds: 0, restMinutes: 3, restSeconds: 0, numGames: 4, limitGames: false, teamCount: 2, labelStyle: 'alpha', teamColors: DEFAULT_TEAM_COLORS, createdAt: new Date().toISOString() },
+        { id: 'sample-2', name: '3on3', gameMinutes: 5, gameSeconds: 0, restMinutes: 2, restSeconds: 0, numGames: 3, limitGames: false, teamCount: 2, labelStyle: 'alpha', teamColors: DEFAULT_TEAM_COLORS, createdAt: new Date().toISOString() },
+        { id: 'sample-4', name: '4チーム総当たり', gameMinutes: 8, gameSeconds: 0, restMinutes: 2, restSeconds: 0, numGames: 6, limitGames: false, teamCount: 4, labelStyle: 'alpha', teamColors: DEFAULT_TEAM_COLORS, createdAt: new Date().toISOString() },
       ])
     } catch (e) {}
   }, [])
@@ -275,7 +303,7 @@ function App() {
             if (next.teamA) {
               speak(
                 `${next.teamA}対${next.teamB}、試合開始です`,
-                `Team ${next.teamA} vs Team ${next.teamB}, start`
+                `Team ${next.teamAEn} vs Team ${next.teamBEn}, start`
               )
             } else {
               speak('次の試合を開始します', 'Next game, start')
@@ -455,7 +483,6 @@ function App() {
   const seconds = secondsLeft % 60
   const formatted = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
   
-  // フェーズリスト構築（オフィシャル情報を各ゲームに付与、NEW）
   const buildPhases = () => {
     const result = []
     const gameSec = gameMinutes * 60 + gameSeconds
@@ -463,22 +490,28 @@ function App() {
     const targetGames = limitGames ? numGames : LOOP_MAX_GAMES
     
     let roundRobinMatches = []
-    let officialsForCycle = []
+    let expandedOfficials = []
     if (isTeamMatch) {
       roundRobinMatches = generateRoundRobinMatches(teamCount)
-      officialsForCycle = assignOfficials(roundRobinMatches, teamCount)
+      const expandedMatches = []
+      for (let i = 0; i < targetGames; i++) {
+        expandedMatches.push(roundRobinMatches[i % roundRobinMatches.length])
+      }
+      expandedOfficials = assignOfficials(expandedMatches, teamCount)
     }
     
     for (let i = 0; i < targetGames; i++) {
-      let label, teamA, teamB, official
+      let label, teamA, teamB, teamAEn, teamBEn, official
       if (isTeamMatch && roundRobinMatches.length > 0) {
         const cycleIdx = i % roundRobinMatches.length
         const pair = roundRobinMatches[cycleIdx]
-        teamA = TEAM_LETTERS[pair[0]]
-        teamB = TEAM_LETTERS[pair[1]]
+        teamA = getTeamLabel(pair[0])
+        teamB = getTeamLabel(pair[1])
+        teamAEn = getTeamLabelEn(pair[0])
+        teamBEn = getTeamLabelEn(pair[1])
         label = `${teamA} vs ${teamB}`
-        const officialIdx = officialsForCycle[cycleIdx]
-        official = officialIdx !== null && officialIdx !== undefined ? TEAM_LETTERS[officialIdx] : null
+        const officialIdx = expandedOfficials[i]
+        official = officialIdx !== null && officialIdx !== undefined ? getTeamLabel(officialIdx) : null
       } else {
         label = limitGames ? `第${i + 1}試合` : '試合中'
       }
@@ -489,16 +522,16 @@ function App() {
         gameNumber: i + 1,
         teamA,
         teamB,
+        teamAEn,
+        teamBEn,
         official,
         durationSec: gameSec,
       })
       if (i < targetGames - 1) {
-        // 休憩フェーズにも次の試合のオフィシャル情報を付与（NEW）
         let restOfficial = null
-        if (isTeamMatch && roundRobinMatches.length > 0) {
-          const nextCycleIdx = (i + 1) % roundRobinMatches.length
-          const nextOfficialIdx = officialsForCycle[nextCycleIdx]
-          restOfficial = nextOfficialIdx !== null && nextOfficialIdx !== undefined ? TEAM_LETTERS[nextOfficialIdx] : null
+        if (isTeamMatch && expandedOfficials.length > 0) {
+          const nextOfficialIdx = expandedOfficials[i + 1]
+          restOfficial = nextOfficialIdx !== null && nextOfficialIdx !== undefined ? getTeamLabel(nextOfficialIdx) : null
         }
         result.push({ type: 'rest', label: '休憩', durationSec: restSec, official: restOfficial })
       }
@@ -522,7 +555,7 @@ function App() {
       id: Date.now().toString(),
       name: name.trim(),
       gameMinutes, gameSeconds, restMinutes, restSeconds, numGames, limitGames,
-      teamCount,
+      teamCount, labelStyle, teamColors,
       createdAt: new Date().toISOString(),
     }])
   }
@@ -535,6 +568,8 @@ function App() {
     setNumGames(preset.numGames)
     setLimitGames(preset.limitGames || false)
     setTeamCount(preset.teamCount || 2)
+    setLabelStyle(preset.labelStyle || 'alpha')
+    setTeamColors(preset.teamColors || DEFAULT_TEAM_COLORS)
   }
   
   const handleDeletePreset = (presetId, presetName) => {
@@ -559,7 +594,7 @@ function App() {
         if (first.teamA) {
           speak(
             `${first.teamA}対${first.teamB}、試合開始です`,
-            `Team ${first.teamA} vs Team ${first.teamB}, start`
+            `Team ${first.teamAEn} vs Team ${first.teamBEn}, start`
           )
         } else {
           speak('試合開始です', 'Game start')
@@ -737,7 +772,7 @@ function App() {
   const benchHideClass = isBenchMode && !controlsVisible ? 'bench-hidden' : ''
   
   const teamSchedulePreview = isTeamMatch
-    ? generateRoundRobinMatches(teamCount).map(([a, b]) => `${TEAM_LETTERS[a]} vs ${TEAM_LETTERS[b]}`).join(' → ')
+    ? generateRoundRobinMatches(teamCount).map(([a, b]) => `${getTeamLabel(a)} vs ${getTeamLabel(b)}`).join(' → ')
     : ''
   
   const showPhaseCounter = limitGames && currentPhase
@@ -843,6 +878,45 @@ function App() {
               </div>
             </div>
             
+            {/* チーム表示形式（NEW、3チーム以上のみ） */}
+            {isTeamMatch && (
+              <div className="setting-row voice-row">
+                <span className="setting-label">表示形式</span>
+                <div className="voice-mode-selector">
+                  <button className={`voice-mode-btn ${labelStyle === 'alpha' ? 'active' : ''}`} onClick={() => setLabelStyle('alpha')}>ABCD</button>
+                  <button className={`voice-mode-btn ${labelStyle === 'number' ? 'active' : ''}`} onClick={() => setLabelStyle('number')}>1234</button>
+                  <button className={`voice-mode-btn ${labelStyle === 'color' ? 'active' : ''}`} onClick={() => setLabelStyle('color')}>色</button>
+                </div>
+              </div>
+            )}
+            
+            {/* チーム別カラー選択（NEW、色モード時のみ） */}
+            {isTeamMatch && labelStyle === 'color' && (
+              <div className="team-color-config">
+                {Array.from({ length: teamCount }).map((_, i) => (
+                  <div key={i} className="team-color-row">
+                    <span className="team-color-row-label">チーム{i + 1}</span>
+                    <div className="color-swatch-selector">
+                      {COLOR_OPTIONS.map((color) => (
+                        <button
+                          key={color}
+                          className={`color-swatch ${teamColors[i] === color ? 'active' : ''}`}
+                          style={{
+                            backgroundColor: COLOR_HEX[color],
+                            color: CHECK_DARK_COLORS.has(color) ? '#222' : '#fff',
+                          }}
+                          onClick={() => handleSetTeamColor(i, color)}
+                          title={color}
+                        >
+                          {teamColors[i] === color ? '✓' : ''}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            
             <div className="setting-row voice-row">
               <span className="setting-label">音声案内</span>
               <div className="voice-mode-selector">
@@ -894,7 +968,6 @@ function App() {
             {isRestPhase && nextLabel && (
               <div className="next-label">NEXT: {nextLabel}</div>
             )}
-            {/* オフィシャル表示（試合中・休憩中どちらも、NEW） */}
             {currentPhase?.official && (
               <div className="official-label">オフィシャル: {currentPhase.official}</div>
             )}
@@ -977,7 +1050,7 @@ function App() {
                     className={`schedule-item ${isCurrent ? 'current' : ''}`}
                     onClick={() => handleJumpToMatch(idx)}
                   >
-                    <span className="schedule-match">{TEAM_LETTERS[a]} vs {TEAM_LETTERS[b]}</span>
+                    <span className="schedule-match">{getTeamLabel(a)} vs {getTeamLabel(b)}</span>
                     {isCurrent && <span className="schedule-current-badge">現在</span>}
                   </button>
                 )
