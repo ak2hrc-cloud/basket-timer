@@ -13,6 +13,8 @@ const COLOR_EN = {
 }
 const DEFAULT_TEAM_COLORS = ['赤', '青', '緑', '白', '黒']
 const LOOP_MAX_GAMES = 99
+const MINUTE_VALUES = Array.from({ length: 16 }, (_, i) => i) // 0〜15分
+const SECOND_VALUES = Array.from({ length: 12 }, (_, i) => i * 5) // 0〜55秒（5秒刻み）
 
 function generateRoundRobinMatches(count) {
   let teams = Array.from({ length: count }, (_, i) => i)
@@ -65,6 +67,87 @@ function assignOfficials(matches, teamCount) {
   return officials
 }
 
+// 縦スクロールのホイールピッカー（NEW）
+function WheelPicker({ values, unit, value, onChange, onFreeSelect }) {
+  const itemH = 36
+  const visibleCount = 5
+  const boxH = itemH * visibleCount
+  const padH = (boxH - itemH) / 2
+  const scrollRef = useRef(null)
+  const timeoutRef = useRef(null)
+  const lastCommittedRef = useRef(value)
+  const [activeIndex, setActiveIndex] = useState(() => Math.max(0, values.indexOf(value)))
+  
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = activeIndex * itemH
+    }
+    return () => clearTimeout(timeoutRef.current)
+  }, [])
+  
+  useEffect(() => {
+    if (value === lastCommittedRef.current) return
+    const idx = Math.max(0, values.indexOf(value))
+    setActiveIndex(idx)
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = idx * itemH
+    }
+    lastCommittedRef.current = value
+  }, [value, values])
+  
+  const handleScroll = () => {
+    if (!scrollRef.current) return
+    const total = values.length + 1
+    const idx = Math.max(0, Math.min(total - 1, Math.round(scrollRef.current.scrollTop / itemH)))
+    setActiveIndex(idx)
+    clearTimeout(timeoutRef.current)
+    timeoutRef.current = setTimeout(() => {
+      if (idx === values.length) {
+        onFreeSelect()
+      } else {
+        const v = values[idx]
+        lastCommittedRef.current = v
+        onChange(v)
+      }
+    }, 120)
+  }
+  
+  const scrollToIndex = (idx) => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({ top: idx * itemH, behavior: 'smooth' })
+    }
+  }
+  
+  return (
+    <div className="wheel-wrap" style={{ height: boxH }}>
+      <div className="wheel-band" style={{ top: padH, height: itemH }} />
+      <div className="wheel-scroll" ref={scrollRef} onScroll={handleScroll} style={{ height: boxH }}>
+        <div style={{ height: padH }} />
+        {values.map((v, i) => (
+          <div
+            key={v}
+            className={`wheel-item ${i === activeIndex ? 'active' : ''}`}
+            style={{ height: itemH }}
+            onClick={() => scrollToIndex(i)}
+          >
+            {v}{unit}
+          </div>
+        ))}
+        <div
+          className={`wheel-item wheel-item-free ${values.length === activeIndex ? 'active' : ''}`}
+          style={{ height: itemH }}
+          onClick={() => scrollToIndex(values.length)}
+        >
+          自由入力
+        </div>
+        <div style={{ height: padH }} />
+      </div>
+      <div className="wheel-fade-top" style={{ height: padH }} />
+      <div className="wheel-fade-bottom" style={{ height: padH }} />
+    </div>
+  )
+}
+
 function App() {
   const [gameMinutes, setGameMinutes] = useState(10)
   const [gameSeconds, setGameSeconds] = useState(0)
@@ -74,6 +157,12 @@ function App() {
   const [limitGames, setLimitGames] = useState(false)
   const [voiceMode, setVoiceMode] = useState('ja')
   const [theme, setTheme] = useState('dark')
+  
+  // 時間設定：ホイール/自由入力の切替（NEW）
+  const [gameMinFree, setGameMinFree] = useState(false)
+  const [gameSecFree, setGameSecFree] = useState(false)
+  const [restMinFree, setRestMinFree] = useState(false)
+  const [restSecFree, setRestSecFree] = useState(false)
   
   const [teamCount, setTeamCount] = useState(2)
   const [labelStyle, setLabelStyle] = useState('alpha')
@@ -237,7 +326,6 @@ function App() {
     window.speechSynthesis.speak(utterance)
   }
   
-  // プリセット読み込み（社会人標準の初期値を変更、NEW）
   useEffect(() => {
     try {
       const stored = localStorage.getItem('basket-timer-presets')
@@ -597,7 +685,6 @@ function App() {
   const totalMin = Math.floor(totalSeconds / 60)
   const totalSec = totalSeconds % 60
   
-  // プリセット保存（新規作成分を先頭に追加、NEW）
   const handleSavePreset = () => {
     const defaultName = isTeamMatch
       ? `${teamCount}チーム総当たり`
@@ -614,6 +701,7 @@ function App() {
     setPresets([newPreset, ...presets])
   }
   
+  // プリセット読込：範囲外の値は自由入力モードに自動切替（NEW）
   const handleLoadPreset = (preset) => {
     setGameMinutes(preset.gameMinutes)
     setGameSeconds(preset.gameSeconds)
@@ -626,6 +714,10 @@ function App() {
     setTeamColors(preset.teamColors || DEFAULT_TEAM_COLORS)
     if (preset.voiceMode) setVoiceMode(preset.voiceMode)
     if (preset.theme) setTheme(preset.theme)
+    setGameMinFree(!MINUTE_VALUES.includes(preset.gameMinutes))
+    setGameSecFree(!SECOND_VALUES.includes(preset.gameSeconds))
+    setRestMinFree(!MINUTE_VALUES.includes(preset.restMinutes))
+    setRestSecFree(!SECOND_VALUES.includes(preset.restSeconds))
   }
   
   const handleDeletePreset = (presetId, presetName) => {
@@ -891,23 +983,75 @@ function App() {
           
           <div className="setting">
             <h2 className="setting-title">試合と休憩を設定</h2>
-            <div className="setting-row">
+            
+            {/* 試合時間（ホイール/自由入力、NEW） */}
+            <div className="setting-row wheel-row">
               <span className="setting-label">試合時間</span>
-              <input type="number" min="0" max="99" value={gameMinutes}
-                onChange={(e) => setGameMinutes(Math.max(0, Math.min(99, parseInt(e.target.value) || 0)))} />
-              <span className="unit">分</span>
-              <input type="number" min="0" max="59" value={gameSeconds}
-                onChange={(e) => setGameSeconds(Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))} />
-              <span className="unit">秒</span>
+              <div className="wheel-field">
+                <div className="wheel-unit-label">分</div>
+                {gameMinFree ? (
+                  <div className="free-input-group">
+                    <input type="number" min="0" max="99" value={gameMinutes}
+                      onChange={(e) => setGameMinutes(Math.max(0, Math.min(99, parseInt(e.target.value) || 0)))} />
+                    <button className="free-back-btn" onClick={() => {
+                      setGameMinutes(v => Math.max(0, Math.min(15, v)))
+                      setGameMinFree(false)
+                    }}>戻す</button>
+                  </div>
+                ) : (
+                  <WheelPicker values={MINUTE_VALUES} unit="" value={gameMinutes} onChange={setGameMinutes} onFreeSelect={() => setGameMinFree(true)} />
+                )}
+              </div>
+              <div className="wheel-field">
+                <div className="wheel-unit-label">秒</div>
+                {gameSecFree ? (
+                  <div className="free-input-group">
+                    <input type="number" min="0" max="59" value={gameSeconds}
+                      onChange={(e) => setGameSeconds(Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))} />
+                    <button className="free-back-btn" onClick={() => {
+                      setGameSeconds(v => Math.max(0, Math.min(55, Math.round(v / 5) * 5)))
+                      setGameSecFree(false)
+                    }}>戻す</button>
+                  </div>
+                ) : (
+                  <WheelPicker values={SECOND_VALUES} unit="" value={gameSeconds} onChange={setGameSeconds} onFreeSelect={() => setGameSecFree(true)} />
+                )}
+              </div>
             </div>
-            <div className="setting-row">
+            
+            {/* 休憩時間（ホイール/自由入力、NEW） */}
+            <div className="setting-row wheel-row">
               <span className="setting-label">休憩時間</span>
-              <input type="number" min="0" max="99" value={restMinutes}
-                onChange={(e) => setRestMinutes(Math.max(0, Math.min(99, parseInt(e.target.value) || 0)))} />
-              <span className="unit">分</span>
-              <input type="number" min="0" max="59" value={restSeconds}
-                onChange={(e) => setRestSeconds(Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))} />
-              <span className="unit">秒</span>
+              <div className="wheel-field">
+                <div className="wheel-unit-label">分</div>
+                {restMinFree ? (
+                  <div className="free-input-group">
+                    <input type="number" min="0" max="99" value={restMinutes}
+                      onChange={(e) => setRestMinutes(Math.max(0, Math.min(99, parseInt(e.target.value) || 0)))} />
+                    <button className="free-back-btn" onClick={() => {
+                      setRestMinutes(v => Math.max(0, Math.min(15, v)))
+                      setRestMinFree(false)
+                    }}>戻す</button>
+                  </div>
+                ) : (
+                  <WheelPicker values={MINUTE_VALUES} unit="" value={restMinutes} onChange={setRestMinutes} onFreeSelect={() => setRestMinFree(true)} />
+                )}
+              </div>
+              <div className="wheel-field">
+                <div className="wheel-unit-label">秒</div>
+                {restSecFree ? (
+                  <div className="free-input-group">
+                    <input type="number" min="0" max="59" value={restSeconds}
+                      onChange={(e) => setRestSeconds(Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))} />
+                    <button className="free-back-btn" onClick={() => {
+                      setRestSeconds(v => Math.max(0, Math.min(55, Math.round(v / 5) * 5)))
+                      setRestSecFree(false)
+                    }}>戻す</button>
+                  </div>
+                ) : (
+                  <WheelPicker values={SECOND_VALUES} unit="" value={restSeconds} onChange={setRestSeconds} onFreeSelect={() => setRestSecFree(true)} />
+                )}
+              </div>
             </div>
             
             <div className="setting-row voice-row">
