@@ -311,10 +311,6 @@ button:hover:not(:disabled) {
   background-color: var(--neutral-hover);
 }
 
-.app.theme-light button {
-  color: white;
-}
-
 .app.theme-hc .preset-save {
   color: #1a1a1a;
 }
