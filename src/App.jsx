@@ -13,8 +13,8 @@ const COLOR_EN = {
 }
 const DEFAULT_TEAM_COLORS = ['赤', '青', '緑', '白', '黒']
 const LOOP_MAX_GAMES = 99
-const MINUTE_VALUES = Array.from({ length: 16 }, (_, i) => i) // 0〜15分
-const SECOND_VALUES = Array.from({ length: 12 }, (_, i) => i * 5) // 0〜55秒（5秒刻み）
+const MINUTE_VALUES = Array.from({ length: 16 }, (_, i) => i)
+const SECOND_VALUES = Array.from({ length: 12 }, (_, i) => i * 5)
 
 function generateRoundRobinMatches(count) {
   let teams = Array.from({ length: count }, (_, i) => i)
@@ -67,49 +67,27 @@ function assignOfficials(matches, teamCount) {
   return officials
 }
 
-// 縦スクロールのホイールピッカー（NEW）
-function WheelPicker({ values, unit, value, onChange, onFreeSelect }) {
+// ホイールピッカー本体（展開時のみ描画される、NEW）
+function WheelPicker({ values, unit, value, onCommit }) {
   const itemH = 36
   const visibleCount = 5
   const boxH = itemH * visibleCount
   const padH = (boxH - itemH) / 2
   const scrollRef = useRef(null)
-  const timeoutRef = useRef(null)
-  const lastCommittedRef = useRef(value)
+  const [pendingValue, setPendingValue] = useState(value)
   const [activeIndex, setActiveIndex] = useState(() => Math.max(0, values.indexOf(value)))
   
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = activeIndex * itemH
     }
-    return () => clearTimeout(timeoutRef.current)
   }, [])
-  
-  useEffect(() => {
-    if (value === lastCommittedRef.current) return
-    const idx = Math.max(0, values.indexOf(value))
-    setActiveIndex(idx)
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = idx * itemH
-    }
-    lastCommittedRef.current = value
-  }, [value, values])
   
   const handleScroll = () => {
     if (!scrollRef.current) return
-    const total = values.length + 1
-    const idx = Math.max(0, Math.min(total - 1, Math.round(scrollRef.current.scrollTop / itemH)))
+    const idx = Math.max(0, Math.min(values.length - 1, Math.round(scrollRef.current.scrollTop / itemH)))
     setActiveIndex(idx)
-    clearTimeout(timeoutRef.current)
-    timeoutRef.current = setTimeout(() => {
-      if (idx === values.length) {
-        onFreeSelect()
-      } else {
-        const v = values[idx]
-        lastCommittedRef.current = v
-        onChange(v)
-      }
-    }, 120)
+    setPendingValue(values[idx])
   }
   
   const scrollToIndex = (idx) => {
@@ -119,31 +97,73 @@ function WheelPicker({ values, unit, value, onChange, onFreeSelect }) {
   }
   
   return (
-    <div className="wheel-wrap" style={{ height: boxH }}>
-      <div className="wheel-band" style={{ top: padH, height: itemH }} />
-      <div className="wheel-scroll" ref={scrollRef} onScroll={handleScroll} style={{ height: boxH }}>
-        <div style={{ height: padH }} />
-        {values.map((v, i) => (
-          <div
-            key={v}
-            className={`wheel-item ${i === activeIndex ? 'active' : ''}`}
-            style={{ height: itemH }}
-            onClick={() => scrollToIndex(i)}
-          >
-            {v}{unit}
-          </div>
-        ))}
-        <div
-          className={`wheel-item wheel-item-free ${values.length === activeIndex ? 'active' : ''}`}
-          style={{ height: itemH }}
-          onClick={() => scrollToIndex(values.length)}
-        >
-          自由入力
+    <div className="wheel-accordion">
+      <div className="wheel-wrap" style={{ height: boxH }}>
+        <div className="wheel-band" style={{ top: padH, height: itemH }} />
+        <div className="wheel-scroll" ref={scrollRef} onScroll={handleScroll} style={{ height: boxH }}>
+          <div style={{ height: padH }} />
+          {values.map((v, i) => (
+            <div
+              key={v}
+              className={`wheel-item ${i === activeIndex ? 'active' : ''}`}
+              style={{ height: itemH }}
+              onClick={() => scrollToIndex(i)}
+            >
+              {v}{unit}
+            </div>
+          ))}
+          <div style={{ height: padH }} />
         </div>
-        <div style={{ height: padH }} />
+        <div className="wheel-fade-top" style={{ height: padH }} />
+        <div className="wheel-fade-bottom" style={{ height: padH }} />
       </div>
-      <div className="wheel-fade-top" style={{ height: padH }} />
-      <div className="wheel-fade-bottom" style={{ height: padH }} />
+      <button className="wheel-confirm-btn" onClick={() => onCommit(pendingValue)}>決定</button>
+    </div>
+  )
+}
+
+// 折りたたみ式の時間フィールド（分 or 秒、1つ分）NEW
+function CollapsibleTimeField({ label, values, unit, value, onCommit, isFree, onGoFree, onBackFromFree, freeMax }) {
+  const [expanded, setExpanded] = useState(false)
+  
+  if (isFree) {
+    return (
+      <div className="time-field">
+        <div className="free-input-group">
+          <input
+            type="number"
+            min="0"
+            max={freeMax}
+            value={value}
+            onChange={(e) => onCommit(Math.max(0, Math.min(freeMax, parseInt(e.target.value) || 0)))}
+          />
+          <button className="free-back-btn" onClick={onBackFromFree}>戻す</button>
+        </div>
+      </div>
+    )
+  }
+  
+  return (
+    <div className="time-field">
+      <button className="time-field-btn" onClick={() => setExpanded(!expanded)}>
+        {value}{unit}
+      </button>
+      {expanded && (
+        <WheelPicker
+          values={values}
+          unit={unit}
+          value={value}
+          onCommit={(v) => {
+            onCommit(v)
+            setExpanded(false)
+          }}
+        />
+      )}
+      {expanded && (
+        <button className="time-field-free-link" onClick={() => { onGoFree(); setExpanded(false) }}>
+          自由入力にする
+        </button>
+      )}
     </div>
   )
 }
@@ -158,7 +178,6 @@ function App() {
   const [voiceMode, setVoiceMode] = useState('ja')
   const [theme, setTheme] = useState('dark')
   
-  // 時間設定：ホイール/自由入力の切替（NEW）
   const [gameMinFree, setGameMinFree] = useState(false)
   const [gameSecFree, setGameSecFree] = useState(false)
   const [restMinFree, setRestMinFree] = useState(false)
@@ -701,7 +720,6 @@ function App() {
     setPresets([newPreset, ...presets])
   }
   
-  // プリセット読込：範囲外の値は自由入力モードに自動切替（NEW）
   const handleLoadPreset = (preset) => {
     setGameMinutes(preset.gameMinutes)
     setGameSeconds(preset.gameSeconds)
@@ -984,74 +1002,68 @@ function App() {
           <div className="setting">
             <h2 className="setting-title">試合と休憩を設定</h2>
             
-            {/* 試合時間（ホイール/自由入力、NEW） */}
-            <div className="setting-row wheel-row">
+            <div className="setting-row time-row">
               <span className="setting-label">試合時間</span>
-              <div className="wheel-field">
-                <div className="wheel-unit-label">分</div>
-                {gameMinFree ? (
-                  <div className="free-input-group">
-                    <input type="number" min="0" max="99" value={gameMinutes}
-                      onChange={(e) => setGameMinutes(Math.max(0, Math.min(99, parseInt(e.target.value) || 0)))} />
-                    <button className="free-back-btn" onClick={() => {
-                      setGameMinutes(v => Math.max(0, Math.min(15, v)))
-                      setGameMinFree(false)
-                    }}>戻す</button>
-                  </div>
-                ) : (
-                  <WheelPicker values={MINUTE_VALUES} unit="" value={gameMinutes} onChange={setGameMinutes} onFreeSelect={() => setGameMinFree(true)} />
-                )}
-              </div>
-              <div className="wheel-field">
-                <div className="wheel-unit-label">秒</div>
-                {gameSecFree ? (
-                  <div className="free-input-group">
-                    <input type="number" min="0" max="59" value={gameSeconds}
-                      onChange={(e) => setGameSeconds(Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))} />
-                    <button className="free-back-btn" onClick={() => {
-                      setGameSeconds(v => Math.max(0, Math.min(55, Math.round(v / 5) * 5)))
-                      setGameSecFree(false)
-                    }}>戻す</button>
-                  </div>
-                ) : (
-                  <WheelPicker values={SECOND_VALUES} unit="" value={gameSeconds} onChange={setGameSeconds} onFreeSelect={() => setGameSecFree(true)} />
-                )}
-              </div>
+              <CollapsibleTimeField
+                label="分"
+                values={MINUTE_VALUES}
+                unit="分"
+                value={gameMinutes}
+                onCommit={setGameMinutes}
+                isFree={gameMinFree}
+                onGoFree={() => setGameMinFree(true)}
+                onBackFromFree={() => {
+                  setGameMinutes(v => Math.max(0, Math.min(15, v)))
+                  setGameMinFree(false)
+                }}
+                freeMax={99}
+              />
+              <CollapsibleTimeField
+                label="秒"
+                values={SECOND_VALUES}
+                unit="秒"
+                value={gameSeconds}
+                onCommit={setGameSeconds}
+                isFree={gameSecFree}
+                onGoFree={() => setGameSecFree(true)}
+                onBackFromFree={() => {
+                  setGameSeconds(v => Math.max(0, Math.min(55, Math.round(v / 5) * 5)))
+                  setGameSecFree(false)
+                }}
+                freeMax={59}
+              />
             </div>
             
-            {/* 休憩時間（ホイール/自由入力、NEW） */}
-            <div className="setting-row wheel-row">
+            <div className="setting-row time-row">
               <span className="setting-label">休憩時間</span>
-              <div className="wheel-field">
-                <div className="wheel-unit-label">分</div>
-                {restMinFree ? (
-                  <div className="free-input-group">
-                    <input type="number" min="0" max="99" value={restMinutes}
-                      onChange={(e) => setRestMinutes(Math.max(0, Math.min(99, parseInt(e.target.value) || 0)))} />
-                    <button className="free-back-btn" onClick={() => {
-                      setRestMinutes(v => Math.max(0, Math.min(15, v)))
-                      setRestMinFree(false)
-                    }}>戻す</button>
-                  </div>
-                ) : (
-                  <WheelPicker values={MINUTE_VALUES} unit="" value={restMinutes} onChange={setRestMinutes} onFreeSelect={() => setRestMinFree(true)} />
-                )}
-              </div>
-              <div className="wheel-field">
-                <div className="wheel-unit-label">秒</div>
-                {restSecFree ? (
-                  <div className="free-input-group">
-                    <input type="number" min="0" max="59" value={restSeconds}
-                      onChange={(e) => setRestSeconds(Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))} />
-                    <button className="free-back-btn" onClick={() => {
-                      setRestSeconds(v => Math.max(0, Math.min(55, Math.round(v / 5) * 5)))
-                      setRestSecFree(false)
-                    }}>戻す</button>
-                  </div>
-                ) : (
-                  <WheelPicker values={SECOND_VALUES} unit="" value={restSeconds} onChange={setRestSeconds} onFreeSelect={() => setRestSecFree(true)} />
-                )}
-              </div>
+              <CollapsibleTimeField
+                label="分"
+                values={MINUTE_VALUES}
+                unit="分"
+                value={restMinutes}
+                onCommit={setRestMinutes}
+                isFree={restMinFree}
+                onGoFree={() => setRestMinFree(true)}
+                onBackFromFree={() => {
+                  setRestMinutes(v => Math.max(0, Math.min(15, v)))
+                  setRestMinFree(false)
+                }}
+                freeMax={99}
+              />
+              <CollapsibleTimeField
+                label="秒"
+                values={SECOND_VALUES}
+                unit="秒"
+                value={restSeconds}
+                onCommit={setRestSeconds}
+                isFree={restSecFree}
+                onGoFree={() => setRestSecFree(true)}
+                onBackFromFree={() => {
+                  setRestSeconds(v => Math.max(0, Math.min(55, Math.round(v / 5) * 5)))
+                  setRestSecFree(false)
+                }}
+                freeMax={59}
+              />
             </div>
             
             <div className="setting-row voice-row">
