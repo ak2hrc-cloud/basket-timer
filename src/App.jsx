@@ -67,7 +67,6 @@ function assignOfficials(matches, teamCount) {
   return officials
 }
 
-// ホイールピッカー本体（展開時のみ描画される、NEW）
 function WheelPicker({ values, unit, value, onCommit }) {
   const itemH = 36
   const visibleCount = 5
@@ -122,7 +121,6 @@ function WheelPicker({ values, unit, value, onCommit }) {
   )
 }
 
-// 折りたたみ式の時間フィールド（分 or 秒、1つ分）NEW
 function CollapsibleTimeField({ label, values, unit, value, onCommit, isFree, onGoFree, onBackFromFree, freeMax }) {
   const [expanded, setExpanded] = useState(false)
   
@@ -744,7 +742,9 @@ function App() {
     }
   }
   
+  // 以下、一覧モーダルを開いている状態で他の操作をした場合、必ず閉じるよう安全策を追加（NEW）
   const handleStart = () => {
+    setShowSchedule(false)
     initAudio()
     if (!hasStarted) {
       const newPhases = buildPhases()
@@ -772,9 +772,13 @@ function App() {
     setIsAllDone(false)
   }
   
-  const handlePause = () => setIsRunning(false)
+  const handlePause = () => {
+    setShowSchedule(false)
+    setIsRunning(false)
+  }
   
   const handleRedoCurrent = () => {
+    setShowSchedule(false)
     if ('speechSynthesis' in window) window.speechSynthesis.cancel()
     if (!currentPhase) return
     setIsRunning(false)
@@ -783,6 +787,7 @@ function App() {
   }
   
   const handleSkipRest = () => {
+    setShowSchedule(false)
     if ('speechSynthesis' in window) window.speechSynthesis.cancel()
     if (!currentPhase || currentPhase.type !== 'rest') return
     const nextIndex = currentPhaseIndex + 1
@@ -830,6 +835,7 @@ function App() {
   
   const handleFinish = () => {
     if (!confirm('タイマーを終了して設定画面に戻りますか？')) return
+    setShowSchedule(false)
     if ('speechSynthesis' in window) window.speechSynthesis.cancel()
     setIsRunning(false)
     setHasStarted(false)
@@ -844,7 +850,10 @@ function App() {
     setPhases([])
   }
   
-  const handleLock = () => setIsLocked(true)
+  const handleLock = () => {
+    setShowSchedule(false)
+    setIsLocked(true)
+  }
   
   const handleUnlockStart = (e) => {
     e.preventDefault()
@@ -876,6 +885,7 @@ function App() {
   }
   
   const enterBenchMode = () => {
+    setShowSchedule(false)
     setIsBenchMode(true)
     setControlsVisible(true)
     scheduleHideControls()
@@ -1209,9 +1219,10 @@ function App() {
         </div>
       ) : isBenchMode ? (
         <div className={`buttons ${benchHideClass}`}>
-          <button onClick={handlePause} disabled={!isRunning}>一時停止</button>
-          {!isRunning && (
-            <button onClick={handleStart}>再開</button>
+          {isRunning ? (
+            <button onClick={handlePause}>⏸ 一時停止</button>
+          ) : (
+            <button onClick={handleStart}>▶ 再開</button>
           )}
           <button onClick={handleRedoCurrent} className="lock-button">↻ やり直し</button>
           {isRestPhase && (
@@ -1222,13 +1233,13 @@ function App() {
       ) : !isAllDone && (
         <div className="buttons">
           {!hasStarted ? (
-            <button onClick={handleStart} disabled={isRunning}>スタート</button>
+            <button onClick={handleStart} disabled={isRunning}>▶ スタート</button>
           ) : (
             <>
               {isRunning ? (
-                <button onClick={handlePause}>一時停止</button>
+                <button onClick={handlePause}>⏸ 一時停止</button>
               ) : (
-                <button onClick={handleStart}>再開</button>
+                <button onClick={handleStart}>▶ 再開</button>
               )}
               <button onClick={handleRedoCurrent} className="lock-button">↻ やり直し</button>
               {isRestPhase && (
