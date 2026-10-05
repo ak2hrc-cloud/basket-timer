@@ -742,7 +742,6 @@ function App() {
     }
   }
   
-  // 以下、一覧モーダルを開いている状態で他の操作をした場合、必ず閉じるよう安全策を追加（NEW）
   const handleStart = () => {
     setShowSchedule(false)
     initAudio()
@@ -947,6 +946,7 @@ function App() {
     return <div className={`timer ${timerWarnClass}`}>{formatted}</div>
   }
   
+  // ベンチモードで自動的に隠すのは操作ボタンだけ（試合カード・NEXT・オフィシャルは常時表示）
   const benchHideClass = isBenchMode && !controlsVisible ? 'bench-hidden' : ''
   
   const teamSchedulePreview = isTeamMatch
@@ -1182,7 +1182,8 @@ function App() {
         </div>
       ) : (
         <>
-          <div className={`phase-info ${benchHideClass}`}>
+          {/* 試合カード・NEXT・オフィシャルは大画面でも常時表示（bench-hiddenを付けない） */}
+          <div className="phase-info">
             <div className="phase-label">{currentPhase?.label}</div>
             {showPhaseCounter && (
               <div className="phase-counter">{currentPhaseIndex + 1} / {phases.length}</div>
