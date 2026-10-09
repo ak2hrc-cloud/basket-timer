@@ -67,7 +67,8 @@ function assignOfficials(matches, teamCount) {
   return officials
 }
 
-function WheelPicker({ values, unit, value, onCommit }) {
+// onLiveChange：指定した場合、ホイールを回した時点で値を通知する（時間変更モーダル用）
+function WheelPicker({ values, unit, value, onCommit, onLiveChange }) {
   const itemH = 36
   const visibleCount = 5
   const boxH = itemH * visibleCount
@@ -87,6 +88,7 @@ function WheelPicker({ values, unit, value, onCommit }) {
     const idx = Math.max(0, Math.min(values.length - 1, Math.round(scrollRef.current.scrollTop / itemH)))
     setActiveIndex(idx)
     setPendingValue(values[idx])
+    if (onLiveChange) onLiveChange(values[idx])
   }
   
   const scrollToIndex = (idx) => {
@@ -121,7 +123,7 @@ function WheelPicker({ values, unit, value, onCommit }) {
   )
 }
 
-function CollapsibleTimeField({ label, values, unit, value, onCommit, isFree, onGoFree, onBackFromFree, freeMax }) {
+function CollapsibleTimeField({ label, values, unit, value, onCommit, onLiveChange, isFree, onGoFree, onBackFromFree, freeMax }) {
   const [expanded, setExpanded] = useState(false)
   
   if (isFree) {
@@ -151,6 +153,7 @@ function CollapsibleTimeField({ label, values, unit, value, onCommit, isFree, on
           values={values}
           unit={unit}
           value={value}
+          onLiveChange={onLiveChange}
           onCommit={(v) => {
             onCommit(v)
             setExpanded(false)
@@ -162,6 +165,78 @@ function CollapsibleTimeField({ label, values, unit, value, onCommit, isFree, on
           自由入力にする
         </button>
       )}
+    </div>
+  )
+}
+
+// 進行中の時間変更モーダル（一時停止中のみ表示、NEW）
+function TimeAdjustModal({ initGameSec, initRestSec, currentTypeLabel, onApply, onCancel }) {
+  const [gm, setGm] = useState(Math.floor(initGameSec / 60))
+  const [gs, setGs] = useState(initGameSec % 60)
+  const [rm, setRm] = useState(Math.floor(initRestSec / 60))
+  const [rs, setRs] = useState(initRestSec % 60)
+  const [gmFree, setGmFree] = useState(!MINUTE_VALUES.includes(Math.floor(initGameSec / 60)))
+  const [gsFree, setGsFree] = useState(!SECOND_VALUES.includes(initGameSec % 60))
+  const [rmFree, setRmFree] = useState(!MINUTE_VALUES.includes(Math.floor(initRestSec / 60)))
+  const [rsFree, setRsFree] = useState(!SECOND_VALUES.includes(initRestSec % 60))
+  
+  const gameTotal = gm * 60 + gs
+  const restTotal = rm * 60 + rs
+  const invalid = gameTotal === 0
+  
+  return (
+    <div className="schedule-overlay">
+      <div className="schedule-modal">
+        <h3 className="schedule-title">時間の変更</h3>
+        <div className="adjust-body">
+          <div className="adjust-note">
+            ここから先のすべての試合・休憩に適用されます。<br />
+            今の{currentTypeLabel}も新しい時間に置き換わります（経過した時間は引き継がれません）。
+          </div>
+          
+          <div className="setting-row time-row">
+            <span className="setting-label">試合時間</span>
+            <CollapsibleTimeField
+              label="分" values={MINUTE_VALUES} unit="分" value={gm}
+              onCommit={setGm} onLiveChange={setGm}
+              isFree={gmFree} onGoFree={() => setGmFree(true)}
+              onBackFromFree={() => { setGm(v => Math.max(0, Math.min(15, v))); setGmFree(false) }}
+              freeMax={99}
+            />
+            <CollapsibleTimeField
+              label="秒" values={SECOND_VALUES} unit="秒" value={gs}
+              onCommit={setGs} onLiveChange={setGs}
+              isFree={gsFree} onGoFree={() => setGsFree(true)}
+              onBackFromFree={() => { setGs(v => Math.max(0, Math.min(55, Math.round(v / 5) * 5))); setGsFree(false) }}
+              freeMax={59}
+            />
+          </div>
+          
+          <div className="setting-row time-row">
+            <span className="setting-label">休憩時間</span>
+            <CollapsibleTimeField
+              label="分" values={MINUTE_VALUES} unit="分" value={rm}
+              onCommit={setRm} onLiveChange={setRm}
+              isFree={rmFree} onGoFree={() => setRmFree(true)}
+              onBackFromFree={() => { setRm(v => Math.max(0, Math.min(15, v))); setRmFree(false) }}
+              freeMax={99}
+            />
+            <CollapsibleTimeField
+              label="秒" values={SECOND_VALUES} unit="秒" value={rs}
+              onCommit={setRs} onLiveChange={setRs}
+              isFree={rsFree} onGoFree={() => setRsFree(true)}
+              onBackFromFree={() => { setRs(v => Math.max(0, Math.min(55, Math.round(v / 5) * 5))); setRsFree(false) }}
+              freeMax={59}
+            />
+          </div>
+          
+          {invalid && <div className="adjust-warn">試合時間は0にできません</div>}
+        </div>
+        <div className="adjust-actions">
+          <button className="adjust-cancel-btn" onClick={onCancel}>キャンセル</button>
+          <button className="adjust-apply-btn" disabled={invalid} onClick={() => onApply(gameTotal, restTotal)}>適用</button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -203,6 +278,7 @@ function App() {
   const [controlsVisible, setControlsVisible] = useState(true)
   
   const [showSchedule, setShowSchedule] = useState(false)
+  const [showAdjust, setShowAdjust] = useState(false)
   
   const [isPortrait, setIsPortrait] = useState(
     typeof window !== 'undefined' && window.innerHeight > window.innerWidth
@@ -381,10 +457,16 @@ function App() {
     }
   }, [isRunning])
   
+  // タイマーが動き出したら時間変更モーダルは必ず閉じる（NEW）
+  useEffect(() => {
+    if (isRunning) setShowAdjust(false)
+  }, [isRunning])
+  
   useEffect(() => {
     if (isAllDone) {
       setIsLocked(false)
       setIsBenchMode(false)
+      setShowAdjust(false)
       clearTimeout(benchTimerRef.current)
     }
   }, [isAllDone])
@@ -778,6 +860,7 @@ function App() {
   
   const handleRedoCurrent = () => {
     setShowSchedule(false)
+    setShowAdjust(false)
     if ('speechSynthesis' in window) window.speechSynthesis.cancel()
     if (!currentPhase) return
     setIsRunning(false)
@@ -787,6 +870,7 @@ function App() {
   
   const handleSkipRest = () => {
     setShowSchedule(false)
+    setShowAdjust(false)
     if ('speechSynthesis' in window) window.speechSynthesis.cancel()
     if (!currentPhase || currentPhase.type !== 'rest') return
     const nextIndex = currentPhaseIndex + 1
@@ -795,6 +879,41 @@ function App() {
     setCurrentPhaseIndex(nextIndex)
     setSecondsLeft(phases[nextIndex].durationSec)
     prevSecondsRef.current = phases[nextIndex].durationSec
+  }
+  
+  // これから先に使う試合／休憩の時間（変更モーダルの初期値用、NEW）
+  const getUpcomingDuration = (type) => {
+    for (let i = currentPhaseIndex; i < phases.length; i++) {
+      if (phases[i].type === type) return phases[i].durationSec
+    }
+    return type === 'game'
+      ? gameMinutes * 60 + gameSeconds
+      : restMinutes * 60 + restSeconds
+  }
+  
+  const handleOpenAdjust = () => {
+    if (!currentPhase || isRunning) return
+    setShowSchedule(false)
+    setShowAdjust(true)
+  }
+  
+  // 今のフェーズを含め、これから先すべてのフェーズの時間を置き換える（NEW）
+  const handleApplyTimeChange = (newGameSec, newRestSec) => {
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel()
+    const cp = phases[currentPhaseIndex]
+    if (!cp) {
+      setShowAdjust(false)
+      return
+    }
+    setPhases((prev) => prev.map((p, i) => {
+      if (i < currentPhaseIndex) return p
+      return { ...p, durationSec: p.type === 'game' ? newGameSec : newRestSec }
+    }))
+    const newCurrent = cp.type === 'game' ? newGameSec : newRestSec
+    setIsRunning(false)
+    setSecondsLeft(newCurrent)
+    prevSecondsRef.current = newCurrent
+    setShowAdjust(false)
   }
   
   const handleJumpToMatch = (matchPositionInCycle) => {
@@ -835,6 +954,7 @@ function App() {
   const handleFinish = () => {
     if (!confirm('タイマーを終了して設定画面に戻りますか？')) return
     setShowSchedule(false)
+    setShowAdjust(false)
     if ('speechSynthesis' in window) window.speechSynthesis.cancel()
     setIsRunning(false)
     setHasStarted(false)
@@ -851,6 +971,7 @@ function App() {
   
   const handleLock = () => {
     setShowSchedule(false)
+    setShowAdjust(false)
     setIsLocked(true)
   }
   
@@ -885,6 +1006,7 @@ function App() {
   
   const enterBenchMode = () => {
     setShowSchedule(false)
+    setShowAdjust(false)
     setIsBenchMode(true)
     setControlsVisible(true)
     scheduleHideControls()
@@ -1182,7 +1304,6 @@ function App() {
         </div>
       ) : (
         <>
-          {/* 試合カード・NEXT・オフィシャルは大画面でも常時表示（bench-hiddenを付けない） */}
           <div className="phase-info">
             <div className="phase-label">{currentPhase?.label}</div>
             {showPhaseCounter && (
@@ -1246,6 +1367,9 @@ function App() {
               {isRestPhase && (
                 <button onClick={handleSkipRest} className="skip-button">▶ 次の試合へ</button>
               )}
+              {!isRunning && (
+                <button onClick={handleOpenAdjust} className="lock-button">⏱ 時間変更</button>
+              )}
               <button
                 onClick={() => isTeamMatch && setShowSchedule(true)}
                 className="lock-button"
@@ -1283,6 +1407,17 @@ function App() {
             <button className="schedule-close" onClick={() => setShowSchedule(false)}>閉じる</button>
           </div>
         </div>
+      )}
+      
+      {/* 時間変更モーダル（一時停止中のみ。背景クリックでは閉じない） */}
+      {showAdjust && hasStarted && !isRunning && !isAllDone && currentPhase && (
+        <TimeAdjustModal
+          initGameSec={getUpcomingDuration('game')}
+          initRestSec={getUpcomingDuration('rest')}
+          currentTypeLabel={currentPhase.type === 'game' ? '試合' : '休憩'}
+          onApply={handleApplyTimeChange}
+          onCancel={() => setShowAdjust(false)}
+        />
       )}
     </div>
   )

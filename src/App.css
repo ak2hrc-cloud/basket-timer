@@ -939,3 +939,67 @@ body::-webkit-scrollbar-thumb,
   background: transparent;
   color: var(--text);
 }
+
+/* 時間変更モーダル */
+.adjust-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-right: 4px;
+  margin-bottom: 14px;
+}
+
+/* ホイールの端で外側がスクロールしないようにする */
+.adjust-body .wheel-scroll {
+  overscroll-behavior: contain;
+}
+
+.adjust-note {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  text-align: center;
+}
+
+.adjust-warn {
+  font-size: 13px;
+  color: var(--warn-high);
+  text-align: center;
+}
+
+.adjust-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.adjust-actions button {
+  flex: 1;
+  min-width: 0;
+  padding: 14px 10px;
+  font-size: 18px;
+}
+
+.adjust-apply-btn {
+  background-color: var(--positive);
+}
+
+.adjust-apply-btn:hover:not(:disabled) {
+  background-color: var(--positive-hover);
+}
+
+.adjust-cancel-btn {
+  background-color: var(--neutral);
+}
+
+.adjust-cancel-btn:hover:not(:disabled) {
+  background-color: var(--neutral-hover);
+}
+
+/* ハイコントラスト：黄背景のボタンは黒文字にする（「決定」の既存の読みづらさも同時に修正） */
+.app.theme-hc .adjust-apply-btn,
+.app.theme-hc .wheel-confirm-btn {
+  color: #1a1a1a;
+}
