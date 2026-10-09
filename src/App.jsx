@@ -16,6 +16,20 @@ const LOOP_MAX_GAMES = 99
 const MINUTE_VALUES = Array.from({ length: 16 }, (_, i) => i)
 const SECOND_VALUES = Array.from({ length: 12 }, (_, i) => i * 5)
 
+// 課金判定が実装されるまでは常にtrue（パイロット中は全機能が使える）。
+// false にすると、有料機能のボタンに王冠が付く。アップセル画面は未実装。
+const IS_PRO = true
+
+// タイマー画面で表示／非表示を選べるボタン（画面上の並び順）
+const BUTTON_OPTIONS = [
+  { key: 'skipRest', label: '次の試合へ', pro: false },
+  { key: 'adjust', label: '時間変更', pro: true },
+  { key: 'schedule', label: '一覧', pro: true },
+  { key: 'score', label: '得点', pro: true },
+  { key: 'lock', label: 'ロック', pro: false },
+]
+const BUTTON_KEYS = BUTTON_OPTIONS.map((o) => o.key)
+
 function generateRoundRobinMatches(count) {
   let teams = Array.from({ length: count }, (_, i) => i)
   if (teams.length % 2 !== 0) {
@@ -65,6 +79,34 @@ function assignOfficials(matches, teamCount) {
   })
   
   return officials
+}
+
+// 保存済みの総得点を読み込む（最大5チーム分）
+function loadScores() {
+  try {
+    const raw = localStorage.getItem('basket-timer-scores')
+    if (raw) {
+      const arr = JSON.parse(raw)
+      if (Array.isArray(arr) && arr.length === 5) {
+        return arr.map((n) => (Number.isFinite(n) ? Math.max(0, Math.min(999, Math.floor(n))) : 0))
+      }
+    }
+  } catch (e) {}
+  return [0, 0, 0, 0, 0]
+}
+
+// 保存済みの「隠すボタン」を読み込む（想定外の値は除外する）
+function loadHiddenButtons() {
+  try {
+    const raw = localStorage.getItem('basket-timer-hidden-buttons')
+    if (raw) {
+      const arr = JSON.parse(raw)
+      if (Array.isArray(arr)) {
+        return arr.filter((k) => BUTTON_KEYS.includes(k))
+      }
+    }
+  } catch (e) {}
+  return []
 }
 
 // onLiveChange：指定した場合、ホイールを回した時点で値を通知する（時間変更モーダル用）
@@ -169,7 +211,7 @@ function CollapsibleTimeField({ label, values, unit, value, onCommit, onLiveChan
   )
 }
 
-// 進行中の時間変更モーダル（一時停止中のみ表示、NEW）
+// 進行中の時間変更モーダル（一時停止中のみ表示）
 function TimeAdjustModal({ initGameSec, initRestSec, currentTypeLabel, onApply, onCancel }) {
   const [gm, setGm] = useState(Math.floor(initGameSec / 60))
   const [gs, setGs] = useState(initGameSec % 60)
@@ -241,6 +283,79 @@ function TimeAdjustModal({ initGameSec, initRestSec, currentTypeLabel, onApply, 
   )
 }
 
+// 得点の1行（−1／直接入力／+1）。入力中に空欄になっても0へ戻さない
+function ScoreRow({ label, swatch, value, isTop, onChange }) {
+  const [text, setText] = useState(String(value))
+  
+  useEffect(() => {
+    setText(String(value))
+  }, [value])
+  
+  const handleText = (e) => {
+    const t = e.target.value.replace(/[^0-9]/g, '').slice(0, 3)
+    setText(t)
+    if (t !== '') onChange(parseInt(t, 10))
+  }
+  
+  return (
+    <div className="score-row">
+      <div className="score-team">
+        {swatch && <span className="score-swatch" style={{ backgroundColor: swatch }} />}
+        <span>{label}</span>
+      </div>
+      <button className="score-step-btn score-step-minus" onClick={() => onChange(Math.max(0, value - 1))}>−1</button>
+      <input
+        className="score-input"
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        value={text}
+        onChange={handleText}
+        onFocus={(e) => e.target.select()}
+        onBlur={() => setText(String(value))}
+      />
+      <button className="score-step-btn score-step-plus" onClick={() => onChange(Math.min(999, value + 1))}>+1</button>
+      <div className="score-badge-slot">
+        {isTop && <span className="score-top-badge">首位</span>}
+      </div>
+    </div>
+  )
+}
+
+// 総得点モーダル
+function ScoreModal({ teamCount, scores, labels, swatches, hasScores, onChange, onReset, onClose }) {
+  const shown = scores.slice(0, teamCount)
+  const maxScore = Math.max(...shown)
+  
+  return (
+    <div className="schedule-overlay" onClick={onClose}>
+      <div className="schedule-modal" onClick={(e) => e.stopPropagation()}>
+        <h3 className="schedule-title">総得点</h3>
+        <div className="score-body">
+          <div className="score-note">
+            各チームの現在の総得点を記録します（試合ごとの記録ではありません）。<br />
+            「終了」しても得点は消えません。次の活動の前に「得点リセット」で消してください。
+          </div>
+          {shown.map((s, i) => (
+            <ScoreRow
+              key={i}
+              label={labels[i]}
+              swatch={swatches[i]}
+              value={s}
+              isTop={maxScore > 0 && s === maxScore}
+              onChange={(v) => onChange(i, v)}
+            />
+          ))}
+        </div>
+        <div className="score-actions">
+          <button className="score-reset-btn" disabled={!hasScores} onClick={onReset}>得点リセット</button>
+          <button onClick={onClose}>閉じる</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function App() {
   const [gameMinutes, setGameMinutes] = useState(10)
   const [gameSeconds, setGameSeconds] = useState(0)
@@ -259,6 +374,14 @@ function App() {
   const [teamCount, setTeamCount] = useState(2)
   const [labelStyle, setLabelStyle] = useState('alpha')
   const [teamColors, setTeamColors] = useState(DEFAULT_TEAM_COLORS)
+  
+  // 総得点（チームの位置ごと、最大5チーム）。起動時に保存済みの値を読み込む
+  const [scores, setScores] = useState(loadScores)
+  const [showScore, setShowScore] = useState(false)
+  const hasScores = scores.some((s) => s !== 0)
+  
+  // タイマー画面で隠すボタン（標準は空＝すべて表示）
+  const [hiddenButtons, setHiddenButtons] = useState(loadHiddenButtons)
   
   const [presets, setPresets] = useState([])
   
@@ -316,6 +439,33 @@ function App() {
     })
   }
   
+  // 得点の更新・リセット
+  const handleScoreChange = (teamIndex, newValue) => {
+    setScores((prev) => {
+      const next = [...prev]
+      next[teamIndex] = Math.max(0, Math.min(999, newValue))
+      return next
+    })
+  }
+  
+  const handleResetScores = () => {
+    if (!hasScores) return
+    if (confirm('すべてのチームの得点を0に戻します。よろしいですか？')) {
+      setScores([0, 0, 0, 0, 0])
+    }
+  }
+  
+  // ボタン表示の切替
+  const handleToggleButton = (key) => {
+    setHiddenButtons((prev) => (
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+    ))
+  }
+  
+  const handleShowAllButtons = () => setHiddenButtons([])
+  
+  const isBtnVisible = (key) => !hiddenButtons.includes(key)
+  
   useEffect(() => {
     voiceModeRef.current = voiceMode
   }, [voiceMode])
@@ -334,6 +484,20 @@ function App() {
       localStorage.setItem('basket-timer-theme', theme)
     } catch (e) {}
   }, [theme])
+  
+  // 得点の保存（変更のたびに自動保存）
+  useEffect(() => {
+    try {
+      localStorage.setItem('basket-timer-scores', JSON.stringify(scores))
+    } catch (e) {}
+  }, [scores])
+  
+  // 隠すボタンの保存
+  useEffect(() => {
+    try {
+      localStorage.setItem('basket-timer-hidden-buttons', JSON.stringify(hiddenButtons))
+    } catch (e) {}
+  }, [hiddenButtons])
   
   const currentPhase = phases[currentPhaseIndex]
   const nextPhase = phases[currentPhaseIndex + 1]
@@ -457,7 +621,7 @@ function App() {
     }
   }, [isRunning])
   
-  // タイマーが動き出したら時間変更モーダルは必ず閉じる（NEW）
+  // タイマーが動き出したら時間変更モーダルは必ず閉じる
   useEffect(() => {
     if (isRunning) setShowAdjust(false)
   }, [isRunning])
@@ -881,7 +1045,7 @@ function App() {
     prevSecondsRef.current = phases[nextIndex].durationSec
   }
   
-  // これから先に使う試合／休憩の時間（変更モーダルの初期値用、NEW）
+  // これから先に使う試合／休憩の時間（変更モーダルの初期値用）
   const getUpcomingDuration = (type) => {
     for (let i = currentPhaseIndex; i < phases.length; i++) {
       if (phases[i].type === type) return phases[i].durationSec
@@ -897,7 +1061,7 @@ function App() {
     setShowAdjust(true)
   }
   
-  // 今のフェーズを含め、これから先すべてのフェーズの時間を置き換える（NEW）
+  // 今のフェーズを含め、これから先すべてのフェーズの時間を置き換える
   const handleApplyTimeChange = (newGameSec, newRestSec) => {
     if ('speechSynthesis' in window) window.speechSynthesis.cancel()
     const cp = phases[currentPhaseIndex]
@@ -951,10 +1115,15 @@ function App() {
     setShowSchedule(false)
   }
   
+  // 終了：得点は消さない（消すのは「得点リセット」だけ）
   const handleFinish = () => {
-    if (!confirm('タイマーを終了して設定画面に戻りますか？')) return
+    const msg = hasScores
+      ? 'タイマーを終了して設定画面に戻ります。得点は残ります（得点画面の「得点リセット」で消せます）。よろしいですか？'
+      : 'タイマーを終了して設定画面に戻りますか？'
+    if (!confirm(msg)) return
     setShowSchedule(false)
     setShowAdjust(false)
+    setShowScore(false)
     if ('speechSynthesis' in window) window.speechSynthesis.cancel()
     setIsRunning(false)
     setHasStarted(false)
@@ -1084,6 +1253,14 @@ function App() {
   }
   const isRestPhase = currentPhase?.type === 'rest'
   const nextLabel = isRestPhase ? getNextLabel() : ''
+  
+  // 下段（任意表示）のボタンを出すかどうか
+  const showSkipBtn = isRestPhase && isBtnVisible('skipRest')
+  const showAdjustBtn = !isRunning && isBtnVisible('adjust')
+  const showScheduleBtn = isTeamMatch && isBtnVisible('schedule')
+  const showScoreBtn = isTeamMatch && isBtnVisible('score')
+  const showLockBtn = isBtnVisible('lock')
+  const hasSecondary = showSkipBtn || showAdjustBtn || showScheduleBtn || showScoreBtn || showLockBtn
   
   const getCurrentPositionInCycle = () => {
     if (!isTeamMatch || phases.length === 0) return -1
@@ -1261,6 +1438,17 @@ function App() {
               </div>
             )}
             
+            {/* 得点（設定画面からも確認・リセットできる。記録が残っている場合は目印を出す） */}
+            {isTeamMatch && (
+              <div className="setting-row voice-row">
+                <span className="setting-label">得点</span>
+                <div className="voice-mode-selector">
+                  <button className="voice-mode-btn" onClick={() => setShowScore(true)}>📊 得点を開く</button>
+                  {hasScores && <span className="score-saved-note">記録あり</span>}
+                </div>
+              </div>
+            )}
+            
             <div className="setting-row voice-row">
               <span className="setting-label">音声案内</span>
               <div className="voice-mode-selector">
@@ -1277,6 +1465,35 @@ function App() {
                 <button className={`voice-mode-btn ${theme === 'light' ? 'active' : ''}`} onClick={() => setTheme('light')}>☀️ ライト</button>
                 <button className={`voice-mode-btn ${theme === 'hc' ? 'active' : ''}`} onClick={() => setTheme('hc')}>🎨 ハイコントラスト</button>
               </div>
+            </div>
+            
+            {/* タイマー画面に表示するボタンの選択（✓＝表示、✕＝非表示。色だけに頼らない） */}
+            <div className="setting-row voice-row">
+              <span className="setting-label">ボタン</span>
+              <div className="voice-mode-selector">
+                {BUTTON_OPTIONS.map((opt) => {
+                  const visible = !hiddenButtons.includes(opt.key)
+                  return (
+                    <button
+                      key={opt.key}
+                      className={`voice-mode-btn ${visible ? 'active' : ''}`}
+                      aria-pressed={visible}
+                      onClick={() => handleToggleButton(opt.key)}
+                    >
+                      {visible ? '✓' : '✕'} {opt.label}{opt.pro && !IS_PRO ? ' 👑' : ''}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+            <div className="btn-visibility-row">
+              <span className="btn-visibility-note">
+                ✓ のボタンがタイマー画面に表示されます。<br />
+                （スタート／一時停止・やり直し・終了・大画面は常に表示）
+              </span>
+              {hiddenButtons.length > 0 && (
+                <button className="btn-restore-btn" onClick={handleShowAllButtons}>全て表示に戻す</button>
+              )}
             </div>
             
             {limitGames ? (
@@ -1300,6 +1517,9 @@ function App() {
         <div className="all-done">
           <div className="finished-message">お疲れさまでした！</div>
           <div className="finished-summary">{completedGames}試合 完了</div>
+          {isTeamMatch && (
+            <button className="lock-button" onClick={() => setShowScore(true)}>📊 得点</button>
+          )}
           <button onClick={handleFinish}>設定に戻る</button>
         </div>
       ) : (
@@ -1347,42 +1567,51 @@ function App() {
             <button onClick={handleStart}>▶ 再開</button>
           )}
           <button onClick={handleRedoCurrent} className="lock-button">↻ やり直し</button>
-          {isRestPhase && (
+          {showSkipBtn && (
             <button onClick={handleSkipRest} className="skip-button">▶ 次の試合へ</button>
           )}
           <button onClick={exitBenchMode} className="lock-button">✕ 通常表示</button>
         </div>
       ) : !isAllDone && (
-        <div className="buttons">
-          {!hasStarted ? (
+        !hasStarted ? (
+          <div className="buttons">
             <button onClick={handleStart} disabled={isRunning}>▶ スタート</button>
-          ) : (
-            <>
+          </div>
+        ) : (
+          <div className="buttons-stack">
+            {/* 上段：常に表示するボタン */}
+            <div className="buttons">
               {isRunning ? (
                 <button onClick={handlePause}>⏸ 一時停止</button>
               ) : (
                 <button onClick={handleStart}>▶ 再開</button>
               )}
               <button onClick={handleRedoCurrent} className="lock-button">↻ やり直し</button>
-              {isRestPhase && (
-                <button onClick={handleSkipRest} className="skip-button">▶ 次の試合へ</button>
-              )}
-              {!isRunning && (
-                <button onClick={handleOpenAdjust} className="lock-button">⏱ 時間変更</button>
-              )}
-              <button
-                onClick={() => isTeamMatch && setShowSchedule(true)}
-                className="lock-button"
-                disabled={!isTeamMatch}
-              >
-                📋 一覧
-              </button>
               <button onClick={handleFinish} className="lock-button">終了</button>
-              <button onClick={handleLock} className="lock-button">🔒 ロック</button>
               <button onClick={enterBenchMode} className="bench-button">📺 大画面</button>
-            </>
-          )}
-        </div>
+            </div>
+            {/* 下段：設定で隠せるボタン（すべて隠した場合は段ごと出さない） */}
+            {hasSecondary && (
+              <div className="buttons">
+                {showSkipBtn && (
+                  <button onClick={handleSkipRest} className="skip-button">▶ 次の試合へ</button>
+                )}
+                {showAdjustBtn && (
+                  <button onClick={handleOpenAdjust} className="lock-button">⏱ 時間変更</button>
+                )}
+                {showScheduleBtn && (
+                  <button onClick={() => setShowSchedule(true)} className="lock-button">📋 一覧</button>
+                )}
+                {showScoreBtn && (
+                  <button onClick={() => setShowScore(true)} className="lock-button">📊 得点</button>
+                )}
+                {showLockBtn && (
+                  <button onClick={handleLock} className="lock-button">🔒 ロック</button>
+                )}
+              </div>
+            )}
+          </div>
+        )
       )}
       
       {showSchedule && isTeamMatch && (
@@ -1417,6 +1646,20 @@ function App() {
           currentTypeLabel={currentPhase.type === 'game' ? '試合' : '休憩'}
           onApply={handleApplyTimeChange}
           onCancel={() => setShowAdjust(false)}
+        />
+      )}
+      
+      {/* 総得点モーダル（動作中でも開ける。タイマーは止まらない） */}
+      {showScore && isTeamMatch && (
+        <ScoreModal
+          teamCount={teamCount}
+          scores={scores}
+          labels={Array.from({ length: teamCount }, (_, i) => getTeamLabel(i))}
+          swatches={Array.from({ length: teamCount }, (_, i) => (labelStyle === 'color' ? COLOR_HEX[teamColors[i]] : null))}
+          hasScores={hasScores}
+          onChange={handleScoreChange}
+          onReset={handleResetScores}
+          onClose={() => setShowScore(false)}
         />
       )}
     </div>
